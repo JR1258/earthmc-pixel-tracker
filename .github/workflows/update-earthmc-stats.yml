@@ -1,7 +1,7 @@
 name: Update EarthMC Stats Daily
 on:
   schedule:
-    - cron: '0 12 * * *'  # Run daily at 12:00 UTC (8am EST)
+    - cron: '*/2 * * * *'  # Run every 2 minutes (for testing)
   workflow_dispatch:      # Allow manual runs from GitHub UI
 
 jobs:
