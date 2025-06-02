@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, User, MapPin, Crown, Users, AlertCircle, Loader2, DollarSign } from 'lucide-react';
+import { Search, User, MapPin, Crown, Users, AlertCircle, Loader2, DollarSign, Calendar, Clock } from 'lucide-react';
 
 interface PlayerData {
   name: string;
@@ -41,6 +41,7 @@ interface PlayerData {
     townRanks: string[];
     nationRanks: string[];
   };
+  friends?: Array<{ name: string; uuid: string }>;
 }
 
 const PlayerLookup = () => {
@@ -114,7 +115,40 @@ const PlayerLookup = () => {
   };
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString();
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  const formatDateWithTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const getMinecraftHeadUrl = (username: string) => {
+    return `https://mc-heads.net/avatar/${username}/64`;
+  };
+
+  const getTimeAgo = (timestamp: number) => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor(diff / (1000 * 60));
+
+    if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
+    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+    return 'Just now';
   };
 
   return (
@@ -175,8 +209,18 @@ const PlayerLookup = () => {
                 {/* Player Header */}
                 <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg">
                   <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
-                      <User className="w-6 h-6 text-white" />
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-700 flex items-center justify-center">
+                      <img
+                        src={getMinecraftHeadUrl(playerData.name)}
+                        alt={`${playerData.name}'s head`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // Fallback to icon if image fails to load
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.nextElementSibling!.style.display = 'flex';
+                        }}
+                      />
+                      <User className="w-6 h-6 text-white hidden" />
                     </div>
                     <div>
                       <h3 className="text-xl font-bold">
@@ -240,18 +284,37 @@ const PlayerLookup = () => {
                   <div className="space-y-4">
                     <div className="p-4 bg-gray-800/50 rounded-lg">
                       <div className="flex items-center space-x-2 mb-2">
-                        <DollarSign className="w-4 h-4 text-green-400" />
-                        <span className="text-sm font-semibold text-green-400">Balance</span>
+                        <DollarSign className="w-4 h-4 text-yellow-400" />
+                        <span className="text-sm font-semibold text-yellow-400">Gold Balance</span>
                       </div>
-                      <div className="text-lg font-bold">${(playerData.stats?.balance || 0).toLocaleString()}</div>
+                      <div className="text-lg font-bold text-yellow-400">{(playerData.stats?.balance || 0).toLocaleString()} Gold</div>
                     </div>
 
-                    <div className="p-4 bg-gray-800/50 rounded-lg">
+                    <div className="p-4 bg-gray-800/50 rounded-lg relative group">
                       <div className="flex items-center space-x-2 mb-2">
                         <Users className="w-4 h-4 text-yellow-400" />
                         <span className="text-sm font-semibold text-yellow-400">Friends</span>
                       </div>
                       <div className="text-lg font-bold">{playerData.stats?.numFriends || 0}</div>
+                      
+                      {/* Friends hover tooltip */}
+                      {playerData.friends && playerData.friends.length > 0 && (
+                        <div className="absolute bottom-full left-0 mb-2 w-64 p-3 bg-gray-900 border border-gray-600 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none">
+                          <div className="text-sm font-semibold text-gray-300 mb-2">Friends List:</div>
+                          <div className="max-h-32 overflow-y-auto space-y-1">
+                            {playerData.friends.map(friend => (
+                              <div key={friend.uuid} className="text-xs text-gray-400 flex items-center space-x-2">
+                                <img
+                                  src={getMinecraftHeadUrl(friend.name)}
+                                  alt={friend.name}
+                                  className="w-4 h-4 rounded"
+                                />
+                                <span>{friend.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -264,15 +327,43 @@ const PlayerLookup = () => {
                   </div>
                 )}
 
+                {/* Enhanced Timeline */}
                 <div className="p-4 bg-gray-800/50 rounded-lg">
-                  <div className="text-sm font-semibold text-gray-400 mb-2">Timeline</div>
-                  <div className="space-y-1 text-sm">
-                    <div>Registered: {formatDate(playerData.timestamps.registered)}</div>
+                  <div className="flex items-center space-x-2 mb-4">
+                    <Calendar className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm font-semibold text-blue-400">Timeline</span>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-start space-x-3 p-3 bg-gray-700/50 rounded-lg">
+                      <div className="w-2 h-2 bg-green-400 rounded-full mt-2"></div>
+                      <div>
+                        <div className="text-sm font-medium text-green-400">Account Created</div>
+                        <div className="text-sm text-gray-300">{formatDate(playerData.timestamps.registered)}</div>
+                      </div>
+                    </div>
+                    
                     {playerData.timestamps.joinedTownAt && (
-                      <div>Joined Town: {formatDate(playerData.timestamps.joinedTownAt)}</div>
+                      <div className="flex items-start space-x-3 p-3 bg-gray-700/50 rounded-lg">
+                        <div className="w-2 h-2 bg-blue-400 rounded-full mt-2"></div>
+                        <div>
+                          <div className="text-sm font-medium text-blue-400">Joined Current Town</div>
+                          <div className="text-sm text-gray-300">{formatDate(playerData.timestamps.joinedTownAt)}</div>
+                        </div>
+                      </div>
                     )}
+                    
                     {playerData.timestamps.lastOnline && (
-                      <div>Last Online: {formatDate(playerData.timestamps.lastOnline)}</div>
+                      <div className="flex items-start space-x-3 p-3 bg-gray-700/50 rounded-lg">
+                        <div className="w-2 h-2 bg-yellow-400 rounded-full mt-2"></div>
+                        <div>
+                          <div className="text-sm font-medium text-yellow-400 flex items-center space-x-2">
+                            <Clock className="w-3 h-3" />
+                            <span>Last Seen</span>
+                          </div>
+                          <div className="text-sm text-gray-300">{formatDateWithTime(playerData.timestamps.lastOnline)}</div>
+                          <div className="text-xs text-gray-400">{getTimeAgo(playerData.timestamps.lastOnline)}</div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -292,6 +383,7 @@ const PlayerLookup = () => {
             <p>• Enter any Minecraft username or UUID to search</p>
             <p>• View detailed player information including town, nation, and ranks</p>
             <p>• See player balance, friends, and activity timeline</p>
+            <p>• Hover over the friends count to see the full friends list</p>
             <p>• Data is fetched in real-time from the EarthMC API</p>
             <p>• Note: Using CORS proxy for browser compatibility</p>
           </div>
