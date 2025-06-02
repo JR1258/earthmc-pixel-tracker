@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +55,9 @@ const Index = () => {
             </TabsTrigger>
           </TabsList>
 
+          <TabsContent value="overview" className="mt-6">
+            <ServerStatus />
+          </TabsContent>
 
           <TabsContent value="towns" className="mt-6">
             <TownBrowser />
