@@ -58,19 +58,33 @@ const PlayerLookup = () => {
       setError(null);
       setHasSearched(true);
 
-      // Use POST request to get detailed player data
-      const response = await fetch('https://api.earthmc.net/v3/aurora/players', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: [searchTerm.trim()]
-        })
-      });
+      // Try direct API call first, if it fails due to CORS, use proxy
+      let response;
+      try {
+        response = await fetch('https://api.earthmc.net/v3/aurora/players', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: [searchTerm.trim()]
+          })
+        });
+      } catch (corsError) {
+        // If CORS fails, try using a CORS proxy
+        response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: [searchTerm.trim()]
+          })
+        });
+      }
 
       if (!response.ok) {
-        throw new Error('Failed to fetch player data');
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const playersData = await response.json();
@@ -85,12 +99,17 @@ const PlayerLookup = () => {
       const player = playersData[playerKey];
       
       if (!player || player.error) {
-        throw new Error('Player not found');
+        throw new Error('Player not found or invalid data');
       }
 
       setPlayerData(player);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Player not found');
+      console.error('Player lookup error:', err);
+      if (err instanceof Error && err.message.includes('CORS')) {
+        setError('Unable to fetch player data due to browser security restrictions. Please try using the application in a different environment.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Player not found');
+      }
       setPlayerData(null);
     } finally {
       setLoading(false);
@@ -172,19 +191,19 @@ const PlayerLookup = () => {
                         {playerData.formattedName || playerData.name}
                       </h3>
                       <div className="flex items-center space-x-2">
-                        {playerData.status.isOnline && (
+                        {playerData.status?.isOnline && (
                           <Badge className="bg-green-600">Online</Badge>
                         )}
-                        {!playerData.status.isOnline && (
+                        {playerData.status && !playerData.status.isOnline && (
                           <Badge className="bg-gray-600">Offline</Badge>
                         )}
-                        {playerData.status.isKing && (
+                        {playerData.status?.isKing && (
                           <Badge className="bg-purple-600">King</Badge>
                         )}
-                        {playerData.status.isMayor && (
+                        {playerData.status?.isMayor && (
                           <Badge className="bg-blue-600">Mayor</Badge>
                         )}
-                        {playerData.status.isNPC && (
+                        {playerData.status?.isNPC && (
                           <Badge className="bg-orange-600">NPC</Badge>
                         )}
                       </div>
@@ -202,7 +221,7 @@ const PlayerLookup = () => {
                           <span className="text-sm font-semibold text-blue-400">Town</span>
                         </div>
                         <div className="text-lg font-bold">{playerData.town.name}</div>
-                        {playerData.ranks.townRanks && playerData.ranks.townRanks.length > 0 && (
+                        {playerData.ranks?.townRanks && playerData.ranks.townRanks.length > 0 && (
                           <div className="text-sm text-gray-400">
                             Ranks: {playerData.ranks.townRanks.join(', ')}
                           </div>
@@ -217,7 +236,7 @@ const PlayerLookup = () => {
                           <span className="text-sm font-semibold text-purple-400">Nation</span>
                         </div>
                         <div className="text-lg font-bold">{playerData.nation.name}</div>
-                        {playerData.ranks.nationRanks && playerData.ranks.nationRanks.length > 0 && (
+                        {playerData.ranks?.nationRanks && playerData.ranks.nationRanks.length > 0 && (
                           <div className="text-sm text-gray-400">
                             Ranks: {playerData.ranks.nationRanks.join(', ')}
                           </div>
@@ -232,7 +251,7 @@ const PlayerLookup = () => {
                         <DollarSign className="w-4 h-4 text-green-400" />
                         <span className="text-sm font-semibold text-green-400">Balance</span>
                       </div>
-                      <div className="text-lg font-bold">${(playerData.stats.balance || 0).toLocaleString()}</div>
+                      <div className="text-lg font-bold">${(playerData.stats?.balance || 0).toLocaleString()}</div>
                     </div>
 
                     <div className="p-4 bg-gray-800/50 rounded-lg">
@@ -240,7 +259,7 @@ const PlayerLookup = () => {
                         <Users className="w-4 h-4 text-yellow-400" />
                         <span className="text-sm font-semibold text-yellow-400">Friends</span>
                       </div>
-                      <div className="text-lg font-bold">{playerData.stats.numFriends || 0}</div>
+                      <div className="text-lg font-bold">{playerData.stats?.numFriends || 0}</div>
                     </div>
                   </div>
                 </div>
@@ -282,6 +301,7 @@ const PlayerLookup = () => {
             <p>• View detailed player information including town, nation, and ranks</p>
             <p>• See player balance, friends, and activity timeline</p>
             <p>• Data is fetched in real-time from the EarthMC API</p>
+            <p>• Note: Due to browser security restrictions, some features may require a backend proxy</p>
           </div>
         </CardContent>
       </Card>
