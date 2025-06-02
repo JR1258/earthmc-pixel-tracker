@@ -14,10 +14,16 @@ const GIST_URL = `https://gist.githubusercontent.com/${GITHUB_USERNAME}/${GIST_I
 // Load shared data from GitHub Gist
 const getSharedData = async () => {
   try {
+    console.log('Fetching from:', GIST_URL);
     const response = await fetch(GIST_URL);
+    console.log('Response status:', response.status);
+    
     if (response.ok) {
       const data = await response.json();
+      console.log('Loaded shared data:', data);
       return data;
+    } else {
+      console.error('Failed to fetch:', response.statusText);
     }
   } catch (error) {
     console.error('Failed to load shared data:', error);
@@ -32,6 +38,8 @@ export const getLast7Days = async (): Promise<(DailyStats | null)[]> => {
     const sharedData = await getSharedData();
     const data = sharedData.stats || [];
     
+    console.log('Processing data for last 7 days:', data);
+    
     const result: (DailyStats | null)[] = [];
     const today = new Date();
     
@@ -42,8 +50,11 @@ export const getLast7Days = async (): Promise<(DailyStats | null)[]> => {
       
       const dayData = data.find((s: DailyStats) => s.date === dateStr);
       result.push(dayData || null);
+      
+      console.log(`Day ${dateStr}:`, dayData || 'No data');
     }
     
+    console.log('Final result:', result);
     return result;
   } catch (error) {
     console.error('Failed to load shared data, using local backup:', error);
@@ -63,11 +74,12 @@ export const saveToday = async (stats: Omit<DailyStats, 'date'>) => {
     onlinePlayers: stats.onlinePlayers
   };
   
+  console.log('Saving today\'s stats:', newStats);
+  
   // Save locally as backup
   saveToLocalStorage(newStats);
   
   // For now, we'll show the shared data but save locally
-  // (Updating GitHub Gist requires authentication, which we'll add later)
   console.log('Stats saved locally. Shared data will be updated manually for now.');
   
   return newStats;
