@@ -40,29 +40,33 @@ const ServerStatus = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
 
-  const loadHistoricalData = () => {
-    const last7Days = getLast7Days();
-    const today = new Date();
-    
-    const chartData: ChartData[] = [];
-    
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
+  const loadHistoricalData = async () => {
+    try {
+      const last7Days = await getLast7Days();
+      const today = new Date();
       
-      const dayData = last7Days[6 - i];
+      const chartData: ChartData[] = [];
       
-      chartData.push({
-        date: dateStr,
-        residents: dayData?.residents || null,
-        towns: dayData?.towns || null,
-        nations: dayData?.nations || null,
-        onlinePlayers: dayData?.onlinePlayers || null
-      });
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        
+        const dayData = last7Days[6 - i];
+        
+        chartData.push({
+          date: dateStr,
+          residents: dayData?.residents || null,
+          towns: dayData?.towns || null,
+          nations: dayData?.nations || null,
+          onlinePlayers: dayData?.onlinePlayers || null
+        });
+      }
+      
+      setHistoricalData(chartData);
+    } catch (error) {
+      console.error('Failed to load historical data:', error);
     }
-    
-    setHistoricalData(chartData);
   };
 
   const saveCurrentStats = () => {
@@ -356,7 +360,7 @@ const ServerStatus = () => {
             <span>7-Day Growth Trends</span>
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Historical server growth data (stored locally)
+            Historical server growth data (shared across all users)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -435,11 +439,11 @@ const ServerStatus = () => {
           <div className="mt-6 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
             <div className="flex items-center space-x-2 text-blue-400 mb-2">
               <Activity className="w-4 h-4" />
-              <span className="text-sm font-semibold">Local Data Storage</span>
+              <span className="text-sm font-semibold">Shared Data Storage</span>
             </div>
             <p className="text-xs text-gray-400">
-              Historical data is saved locally in your browser. Charts will build up over time as you visit the site daily.
-              {dailyChanges ? " Growth indicators are now available!" : " Growth comparisons will appear after 2+ days of data."}
+              Historical data is shared via GitHub Gist. All users see the same charts and trends.
+              {dailyChanges ? " Growth indicators are available!" : " Growth comparisons will appear after 2+ days of data."}
             </p>
           </div>
         </CardContent>
