@@ -1,8 +1,12 @@
-name: Update EarthMC Stats Daily
+name: Update EarthMC Stats Every 2 Hours
 
 on:
   schedule:
-    - cron: '0 12 * * *'   # Daily at 12:00 UTC
+    # Every 2 hours in German time (CET/CEST)
+    # CET is UTC+1, CEST is UTC+2
+    # Running at: 6, 8, 10, 12, 14, 16, 18, 20, 22, 0, 2, 4 UTC
+    # Which is: 7, 9, 11, 13, 15, 17, 19, 21, 23, 1, 3, 5 German time
+    - cron: '0 6,8,10,12,14,16,18,20,22,0,2,4 * * *'
   workflow_dispatch:        # Allow manual runs from GitHub UI
 
 jobs:
@@ -12,10 +16,11 @@ jobs:
       contents: read
     
     steps:
-      - name: Testing Mode Active
+      - name: Production Mode Active
         run: |
-          echo "🧪 TESTING MODE: Running frequent updates (every 2 minutes)"
-          echo "Current time: $(date)"
+          echo "📅 PRODUCTION MODE: Running every 2 hours (German time)"
+          echo "Current UTC time: $(date)"
+          echo "German time (approx): $(date -d '+1 hour')"
 
       - name: Fetch EarthMC Server Data
         id: fetch-data
@@ -47,10 +52,9 @@ jobs:
           NATIONS=$(echo "$SERVER_DATA" | jq -r '.stats.numNations // 0')
           ONLINE=$(echo "$SERVER_DATA" | jq -r '.stats.numOnlinePlayers // 0')
           
-          # Generate a date within the last 7 days for testing (to build history faster)
-          DAYS_BACK=$((RANDOM % 7))
-          TODAY=$(date -u +%Y-%m-%d)  # Always use today
-          echo "🧪 Testing mode: Using date $TODAY (${DAYS_BACK} days back)"
+          # Production mode: always use today's date
+          TODAY=$(date -u +%Y-%m-%d)
+          echo "📅 Production mode: Using today's date $TODAY"
           
           TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           
@@ -159,7 +163,7 @@ jobs:
             echo "🏘️ Towns: ${{ steps.fetch-data.outputs.towns }}"
             echo "🏛️ Nations: ${{ steps.fetch-data.outputs.nations }}"
             echo "🟢 Online: ${{ steps.fetch-data.outputs.online }}"
-            echo "🧪 Testing mode active - next run in 2 minutes"
+            echo "📅 Production mode - next run in 2 hours"
           else
             echo "❌ Failed to update gist"
             exit 1
