@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Crown, DollarSign, Activity, AlertCircle, BarChart3, ArrowUp, ArrowDown } from 'lucide-react';
-import { saveDailyStats, getHistoricalStats, type DailyStats } from '@/lib/database';
+import { saveToday, getLast7Days, shouldSaveToday, type DailyStats } from '@/lib/dataStorage';
 
 interface Town {
   name: string;
@@ -24,7 +24,7 @@ interface ServerData {
   };
 }
 
-interface ChartDailyStats {
+interface ChartData {
   date: string;
   residents: number | null;
   towns: number | null;
@@ -38,96 +38,45 @@ const ServerStatus = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [historicalData, setHistoricalData] = useState<ChartDailyStats[]>([]);
+  const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
 
-  const initializeHistoricalData = () => {
-    const data: ChartDailyStats[] = [];
+  const loadHistoricalData = () => {
+    const last7Days = getLast7Days();
     const today = new Date();
+    
+    const chartData: ChartData[] = [];
     
     for (let i = 6; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
       
-      data.push({
-        date: date.toISOString().split('T')[0],
-        residents: null,
-        towns: null,
-        nations: null,
-        onlinePlayers: null
+      const dayData = last7Days[6 - i];
+      
+      chartData.push({
+        date: dateStr,
+        residents: dayData?.residents || null,
+        towns: dayData?.towns || null,
+        nations: dayData?.nations || null,
+        onlinePlayers: dayData?.onlinePlayers || null
       });
     }
     
-    setHistoricalData(data);
+    setHistoricalData(chartData);
   };
 
-  const saveStatsToDatabase = async () => {
-    if (!serverData) return;
+  const saveCurrentStats = () => {
+    if (!serverData || !shouldSaveToday()) return;
     
-    const today = new Date().toISOString().split('T')[0];
+    const saved = saveToday({
+      residents: serverData.stats.numResidents,
+      towns: serverData.stats.numTowns,
+      nations: serverData.stats.numNations,
+      onlinePlayers: serverData.stats.numOnlinePlayers
+    });
     
-    try {
-      await saveDailyStats({
-        date: today,
-        residents: serverData.stats.numResidents,
-        towns: serverData.stats.numTowns,
-        nations: serverData.stats.numNations,
-        online_players: serverData.stats.numOnlinePlayers
-      });
-      
-      // Update local state immediately
-      setHistoricalData(prev => {
-        const updated = [...prev];
-        const todayIndex = updated.findIndex(d => d.date === today);
-        
-        if (todayIndex !== -1) {
-          updated[todayIndex] = {
-            date: today,
-            residents: serverData.stats.numResidents,
-            towns: serverData.stats.numTowns,
-            nations: serverData.stats.numNations,
-            onlinePlayers: serverData.stats.numOnlinePlayers
-          };
-        }
-        
-        return updated;
-      });
-    } catch (error) {
-      console.error('Failed to save stats:', error);
-    }
-  };
-
-  const loadHistoricalData = async () => {
-    try {
-      const data = await getHistoricalStats(7);
-      
-      if (data.length > 0) {
-        // Create full 7-day array with nulls for missing dates
-        const fullData: ChartDailyStats[] = [];
-        const today = new Date();
-        
-        for (let i = 6; i >= 0; i--) {
-          const date = new Date(today);
-          date.setDate(date.getDate() - i);
-          const dateStr = date.toISOString().split('T')[0];
-          
-          const dayData = data.find((d: DailyStats) => d.date === dateStr);
-          
-          fullData.push({
-            date: dateStr,
-            residents: dayData?.residents || null,
-            towns: dayData?.towns || null,
-            nations: dayData?.nations || null,
-            onlinePlayers: dayData?.online_players || null
-          });
-        }
-        
-        setHistoricalData(fullData);
-      } else {
-        initializeHistoricalData();
-      }
-    } catch (error) {
-      console.error('Failed to load historical data:', error);
-      initializeHistoricalData();
+    if (saved) {
+      loadHistoricalData(); // Refresh the chart data
     }
   };
 
@@ -173,7 +122,7 @@ const ServerStatus = () => {
 
   useEffect(() => {
     if (serverData) {
-      saveStatsToDatabase();
+      saveCurrentStats();
     }
   }, [serverData]);
 
@@ -220,16 +169,14 @@ const ServerStatus = () => {
   };
 
   const getLatestData = () => {
-    if (historicalData.length < 2) return null;
-    
-    const daysWithData = historicalData.filter(d => 
+    const validData = historicalData.filter(d => 
       d.residents !== null && d.towns !== null && d.nations !== null
     );
     
-    if (daysWithData.length < 2) return null;
+    if (validData.length < 2) return null;
     
-    const today = daysWithData[daysWithData.length - 1];
-    const yesterday = daysWithData[daysWithData.length - 2];
+    const today = validData[validData.length - 1];
+    const yesterday = validData[validData.length - 2];
     
     return {
       residents: calculateDailyChange(today.residents!, yesterday.residents!),
@@ -240,13 +187,13 @@ const ServerStatus = () => {
 
   const dailyChanges = getLatestData();
 
-  const SimpleChart = ({ data, dataKey, color }: { data: ChartDailyStats[], dataKey: keyof ChartDailyStats, color: string }) => {
+  const SimpleChart = ({ data, dataKey, color }: { data: ChartData[], dataKey: keyof ChartData, color: string }) => {
     const validData = data.filter(d => d[dataKey] !== null);
     
     if (validData.length === 0) {
       return (
         <div className="h-24 flex items-center justify-center bg-gray-800/30 rounded-lg">
-          <span className="text-gray-500 text-sm">No data yet</span>
+          <span className="text-gray-500 text-sm">No data collected yet</span>
         </div>
       );
     }
@@ -375,6 +322,12 @@ const ServerStatus = () => {
                   <span className="font-semibold">EarthMC</span>
                 </div>
                 <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
+                  <span className="text-gray-400">Version</span>
+                  <span className="font-semibold">
+                    {loading ? <Skeleton className="h-5 w-16" /> : serverData?.version || 'Unknown'}
+                  </span>
+                </div>
+                <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
                   <span className="text-gray-400">Map</span>
                   <span className="font-semibold">Aurora</span>
                 </div>
@@ -403,7 +356,7 @@ const ServerStatus = () => {
             <span>7-Day Growth Trends</span>
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Historical server growth data
+            Historical server growth data (stored locally)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -476,6 +429,18 @@ const ServerStatus = () => {
               <SimpleChart data={historicalData} dataKey="nations" color="#eab308" />
               <div className="text-xs text-gray-400 text-center">Past 7 days</div>
             </div>
+          </div>
+
+          {/* Data Info */}
+          <div className="mt-6 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+            <div className="flex items-center space-x-2 text-blue-400 mb-2">
+              <Activity className="w-4 h-4" />
+              <span className="text-sm font-semibold">Local Data Storage</span>
+            </div>
+            <p className="text-xs text-gray-400">
+              Historical data is saved locally in your browser. Charts will build up over time as you visit the site daily.
+              {dailyChanges ? " Growth indicators are now available!" : " Growth comparisons will appear after 2+ days of data."}
+            </p>
           </div>
         </CardContent>
       </Card>
