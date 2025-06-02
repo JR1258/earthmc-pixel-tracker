@@ -198,7 +198,7 @@ const ServerStatus = () => {
         <div className="lg:col-span-1">
           <Card className="bg-black/40 border-green-500/20 text-white h-full">
             <CardHeader>
-              <CardTitle className="text-green-400">Quick Stats Pr</CardTitle>
+              <CardTitle className="text-green-400">Quick Stats</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">

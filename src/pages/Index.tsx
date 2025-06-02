@@ -56,36 +56,6 @@ const Index = () => {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="mt-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <ServerStatus />
-              </div>
-              <div className="space-y-6">
-                <Card className="bg-black/40 border-green-500/20 text-white">
-                  <CardHeader>
-                    <CardTitle className="text-green-400">Quick Stats</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Server</span>
-                        <span className="text-green-400">EarthMC</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Version</span>
-                        <span>1.20.1</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Map</span>
-                        <span>Aurora</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </TabsContent>
 
           <TabsContent value="towns" className="mt-6">
             <TownBrowser />
