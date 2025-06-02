@@ -32,8 +32,28 @@ const getSharedData = async () => {
   return { lastUpdated: new Date().toISOString(), stats: [] };
 };
 
+// Add this function right before getLast7Days
+export const debugCurrentDates = () => {
+  const today = new Date();
+  console.log('=== DATE DEBUG ===');
+  console.log('Current timestamp:', Date.now());
+  console.log('Today is:', today.toISOString().split('T')[0]);
+  console.log('Looking for these 7 days:');
+  
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split('T')[0];
+    console.log(`  ${i === 0 ? 'TODAY' : `${i} days ago`}: ${dateStr}`);
+  }
+  console.log('===================');
+};
+
 // Get last 7 days from shared data
 export const getLast7Days = async (): Promise<(DailyStats | null)[]> => {
+  // Add this line at the start
+  debugCurrentDates();
+  
   try {
     const sharedData = await getSharedData();
     const data = sharedData.stats || [];
