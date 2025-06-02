@@ -12,7 +12,7 @@ interface PlayerData {
   nation: string;
   balance: number;
   joinedTownAt: string;
-  isOnline: boolean;
+  isOnline: boolean | null; // null means unknown due to API limitation
 }
 
 const PlayerLookup = () => {
@@ -21,6 +21,7 @@ const PlayerLookup = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [onlineStatusUnavailable, setOnlineStatusUnavailable] = useState(false);
 
   const searchPlayer = async () => {
     if (!searchTerm.trim()) return;
@@ -29,11 +30,25 @@ const PlayerLookup = () => {
       setLoading(true);
       setError(null);
       setHasSearched(true);
+      setOnlineStatusUnavailable(false);
 
-      // First check if player is online
-      const onlineResponse = await fetch('https://api.earthmc.net/v3/aurora/online');
-      const onlineData = await onlineResponse.json();
-      const isOnline = onlineData.players.includes(searchTerm);
+      // Try to check if player is online, but handle gracefully if it fails
+      let isOnline: boolean | null = null;
+      try {
+        const onlineResponse = await fetch('https://api.earthmc.net/v3/aurora/online');
+        if (onlineResponse.ok) {
+          const onlineData = await onlineResponse.json();
+          isOnline = onlineData.players?.includes(searchTerm) || false;
+        } else {
+          console.log('Online endpoint not available');
+          setOnlineStatusUnavailable(true);
+          isOnline = null; // Unknown status
+        }
+      } catch (onlineErr) {
+        console.log('Failed to fetch online data:', onlineErr);
+        setOnlineStatusUnavailable(true);
+        isOnline = null;
+      }
 
       // Get all residents data (this requires fetching towns)
       const townsResponse = await fetch('https://api.earthmc.net/v3/aurora/towns');
@@ -42,8 +57,8 @@ const PlayerLookup = () => {
 
       // Find the player's town
       const playerTown = townsData.find((town: any) => 
-        town.residents.some((resident: string) => 
-          resident.toLowerCase() === searchTerm.toLowerCase()
+        town.residents?.some((resident: string) => 
+          resident?.toLowerCase() === searchTerm.toLowerCase()
         )
       );
 
@@ -53,8 +68,8 @@ const PlayerLookup = () => {
 
       const playerInfo: PlayerData = {
         name: searchTerm,
-        town: playerTown.name,
-        nation: playerTown.nation,
+        town: playerTown.name || 'Unknown',
+        nation: playerTown.nation || 'Unknown',
         balance: 0, // This would require a different API endpoint
         joinedTownAt: 'Unknown', // This would require historical data
         isOnline
@@ -76,6 +91,18 @@ const PlayerLookup = () => {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {/* API Warning */}
+      {onlineStatusUnavailable && (
+        <Card className="bg-yellow-900/20 border-yellow-500/20 text-white">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2 text-yellow-400">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-sm">Online status unavailable - EarthMC API endpoint not found</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Search Card */}
       <Card className="bg-black/40 border-green-500/20 text-white">
         <CardHeader>
@@ -138,9 +165,15 @@ const PlayerLookup = () => {
                     <div>
                       <h3 className="text-xl font-bold">{playerData.name}</h3>
                       <div className="flex items-center space-x-2">
-                        <Badge className={`${playerData.isOnline ? 'bg-green-600' : 'bg-gray-600'}`}>
-                          {playerData.isOnline ? 'Online' : 'Offline'}
-                        </Badge>
+                        {playerData.isOnline === true && (
+                          <Badge className="bg-green-600">Online</Badge>
+                        )}
+                        {playerData.isOnline === false && (
+                          <Badge className="bg-gray-600">Offline</Badge>
+                        )}
+                        {playerData.isOnline === null && (
+                          <Badge className="bg-yellow-600">Status Unknown</Badge>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -173,7 +206,9 @@ const PlayerLookup = () => {
                         <span className="text-sm font-semibold text-green-400">Status</span>
                       </div>
                       <div className="text-lg font-bold">
-                        {playerData.isOnline ? 'Currently Online' : 'Offline'}
+                        {playerData.isOnline === true && 'Currently Online'}
+                        {playerData.isOnline === false && 'Offline'}
+                        {playerData.isOnline === null && 'Status Unknown'}
                       </div>
                     </div>
 
@@ -191,8 +226,8 @@ const PlayerLookup = () => {
                 <div className="p-4 bg-blue-900/20 border border-blue-500/20 rounded-lg">
                   <div className="text-blue-400 text-sm font-semibold mb-2">Note</div>
                   <div className="text-sm text-gray-300">
-                    Player data is fetched from the EarthMC API. Some detailed statistics like balance 
-                    and join dates may not be available through the public API.
+                    Player data is fetched from the EarthMC API. Some detailed statistics like balance, 
+                    join dates, and online status may not be available through the public API.
                   </div>
                 </div>
               </div>
@@ -210,7 +245,7 @@ const PlayerLookup = () => {
           <div className="text-sm text-gray-400 space-y-2">
             <p>• Enter any Minecraft username to search for their EarthMC data</p>
             <p>• See which town and nation they belong to</p>
-            <p>• Check if they're currently online</p>
+            <p>• Check their status (when API is available)</p>
             <p>• Data is updated in real-time from the EarthMC API</p>
           </div>
         </CardContent>
