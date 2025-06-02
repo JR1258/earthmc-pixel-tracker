@@ -53,11 +53,15 @@ const TownBrowser = () => {
   }, []);
 
   useEffect(() => {
-    let filtered = towns.filter(town => 
-      town.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      town.mayor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      town.nation.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    let filtered = towns.filter(town => {
+      const townName = town.name || '';
+      const townMayor = town.mayor || '';
+      const townNation = town.nation || '';
+      
+      return townName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             townMayor.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             townNation.toLowerCase().includes(searchTerm.toLowerCase());
+    });
 
     if (selectedNation !== 'all') {
       filtered = filtered.filter(town => town.nation === selectedNation);
@@ -67,7 +71,7 @@ const TownBrowser = () => {
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'name':
-          return a.name.localeCompare(b.name);
+          return (a.name || '').localeCompare(b.name || '');
         case 'balance':
           return (b.balance || 0) - (a.balance || 0);
         case 'residents':
@@ -80,7 +84,7 @@ const TownBrowser = () => {
     setFilteredTowns(filtered);
   }, [towns, searchTerm, sortBy, selectedNation]);
 
-  const uniqueNations = Array.from(new Set(towns.map(town => town.nation))).sort();
+  const uniqueNations = Array.from(new Set(towns.map(town => town.nation || 'Unknown'))).sort();
 
   const formatBalance = (balance: number | undefined | null): string => {
     if (balance === undefined || balance === null) return '$0';
@@ -98,6 +102,7 @@ const TownBrowser = () => {
     return `${location.x}, ${location.z}`;
   };
 
+  
   if (error) {
     return (
       <Card className="bg-red-900/20 border-red-500/20 text-white">
@@ -185,9 +190,9 @@ const TownBrowser = () => {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-bold text-green-400 text-lg">{town.name}</h3>
+                    <h3 className="font-bold text-green-400 text-lg">{town.name || 'Unknown'}</h3>
                     <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
-                      {town.nation}
+                      {town.nation || 'Unknown'}
                     </Badge>
                   </div>
                   <div className="text-right">
@@ -203,7 +208,7 @@ const TownBrowser = () => {
                       <Crown className="w-3 h-3" />
                       <span>Mayor</span>
                     </span>
-                    <span>{town.mayor}</span>
+                    <span>{town.mayor || 'Unknown'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 flex items-center space-x-1">
@@ -221,7 +226,7 @@ const TownBrowser = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Chunks</span>
-                    <span>{town.chunks}</span>
+                    <span>{town.chunks || 0}</span>
                   </div>
                 </div>
               </CardContent>
