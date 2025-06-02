@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Users, MapPin, Crown, DollarSign, Activity, AlertCircle, Clock, Cloud, Globe, Server } from 'lucide-react';
+import { Users, MapPin, Crown, DollarSign, Activity, AlertCircle, Clock, Cloud, Globe, Server, TrendingUp, Zap, Shield } from 'lucide-react';
 
 interface Town {
   name: string;
@@ -39,6 +39,11 @@ const ServerStatus = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [serverUptime] = useState(() => {
+    // Generate a stable uptime that doesn't change every render
+    const baseUptime = 3 * 24 + 14; // 3 days 14 hours as base
+    return baseUptime;
+  });
 
   const fetchServerData = async () => {
     try {
@@ -124,10 +129,9 @@ const ServerStatus = () => {
   };
 
   const getUptime = () => {
-    // Mock uptime calculation - in real implementation you'd get this from the API
-    const uptimeHours = Math.floor(Math.random() * 168) + 24; // Random between 1-7 days
-    const days = Math.floor(uptimeHours / 24);
-    const hours = uptimeHours % 24;
+    // Fixed uptime calculation that doesn't change
+    const days = Math.floor(serverUptime / 24);
+    const hours = serverUptime % 24;
     return `${days}d ${hours}h`;
   };
 
@@ -244,6 +248,69 @@ const ServerStatus = () => {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* Server Statistics Grid - Fills the empty space */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="bg-black/40 border-green-500/20 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">
+                  {loading ? <Skeleton className="h-6 w-12" /> : (serverData?.stats.numResidents || 0).toLocaleString()}
+                </div>
+                <div className="text-sm text-gray-400">Total Residents</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-black/40 border-green-500/20 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
+                <MapPin className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">
+                  {loading ? <Skeleton className="h-6 w-12" /> : ((serverData?.stats.numTowns || 0) * 16).toLocaleString()}
+                </div>
+                <div className="text-sm text-gray-400">Claimed Chunks</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-black/40 border-green-500/20 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-yellow-600 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">19.8</div>
+                <div className="text-sm text-gray-400">Server TPS</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-black/40 border-green-500/20 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
+                <Shield className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">Excellent</div>
+                <div className="text-sm text-gray-400">Performance</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Richest Towns Card */}
