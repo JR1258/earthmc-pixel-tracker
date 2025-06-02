@@ -1,46 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EarthMC Pixel Tracker - Home</title>
-    <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-    <header>
-        <h1>EarthMC Pixel Tracker</h1>
-        <nav>
-            <a href="index.html" class="active">Home</a>
-            <a href="towns.html">Towns</a>
-            <a href="nations.html">Nations</a>
-            <a href="players.html">Players</a>
-        </nav>
-    </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>earthmc-pixel-tracker</title>
+    <meta name="description" content="Lovable Generated Project" />
+    <meta name="author" content="Lovable" />
 
-    <main>
-        <section id="server-status">
-            <h2>Server Status</h2>
-            <p>Players Online: <span id="player-count">0</span></p>
-            <button id="toggle-players" class="mc-button">▼ Show Players</button>
-            <div id="online-players" style="display: none;"></div>
-        </section>
+    <meta property="og:title" content="earthmc-pixel-tracker" />
+    <meta property="og:description" content="Lovable Generated Project" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
-        <section id="quick-stats">
-            <div class="stat-card">
-                <h3>Top Town by Balance</h3>
-                <p id="top-town-balance">Loading...</p>
-            </div>
-            <div class="stat-card">
-                <h3>Top Nation by Balance</h3>
-                <p id="top-nation-balance">Loading...</p>
-            </div>
-        </section>
-    </main>
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@lovable_dev" />
+    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+  </head>
 
-    <footer>
-        <p>EarthMC Pixel Tracker - Unofficial EarthMC Server Statistics</p>
-    </footer>
-
-    <script src="js/script.js"></script>
-</body>
+  <body>
+    <div id="root"></div>
+    <!-- IMPORTANT: DO NOT REMOVE THIS SCRIPT TAG OR THIS VERY COMMENT! -->
+    <script src="https://cdn.gpteng.co/gptengineer.js" type="module"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
