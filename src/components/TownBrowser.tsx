@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -69,6 +68,7 @@ const TownBrowser = () => {
   const [selectedNation, setSelectedNation] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'basic' | 'detailed'>('basic');
 
+  // Fetch all towns (basic info)
   const fetchBasicTowns = async () => {
     try {
       setLoading(true);
@@ -87,78 +87,76 @@ const TownBrowser = () => {
     }
   };
 
-  const fetchDetailedTowns = async (townUuids: string[]) => {
+  // Fetch detailed info for the top 50 towns by sort/search
+  const fetchDetailedTowns = async (
+    sortBy: 'balance' | 'residents' | 'name',
+    searchTerm = '',
+    nationFilter = 'all'
+  ) => {
+    setLoadingDetails(true);
+    setError(null);
     try {
-      setLoadingDetails(true);
-      
-      // Fetch detailed data for selected towns using POST
-      const response = await fetch('https://api.earthmc.net/v3/aurora/towns', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: townUuids.slice(0, 50) // Limit to prevent too large requests
-        })
+      // Fetch all towns (basic info)
+      const response = await fetch('https://api.earthmc.net/v3/aurora/towns');
+      if (!response.ok) throw new Error('Failed to fetch towns data');
+      const townsData = await response.json();
+
+      // Filter by search term
+      let filtered = townsData;
+      if (searchTerm) {
+        filtered = filtered.filter((t: any) =>
+          t.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      }
+
+      // Sort
+      filtered = filtered.sort((a: any, b: any) => {
+        if (sortBy === 'balance') return (b.stats?.balance || 0) - (a.stats?.balance || 0);
+        if (sortBy === 'residents') return (b.stats?.numResidents || 0) - (a.stats?.numResidents || 0);
+        return (a.name || '').localeCompare(b.name || '');
       });
 
-      if (!response.ok) throw new Error('Failed to fetch detailed town data');
-      
-      const detailedData = await response.json();
-      setDetailedTowns(detailedData);
+      // Get top 50 UUIDs
+      const topUuids = filtered.slice(0, 50).map((t: any) => t.uuid);
+
+      // Fetch detailed info
+      const detailRes = await fetch('https://api.earthmc.net/v3/aurora/towns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: topUuids }),
+      });
+      if (!detailRes.ok) throw new Error('Failed to fetch detailed town data');
+      const detailed = await detailRes.json();
+
+      // Filter by nation if needed
+      let nationFiltered = detailed;
+      if (nationFilter !== 'all') {
+        nationFiltered = detailed.filter((town: DetailedTown) => town.nation?.name === nationFilter);
+      }
+
+      setDetailedTowns(detailed);
+      setFilteredTowns(nationFiltered);
     } catch (err) {
-      console.error('Error fetching detailed towns:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
       setDetailedTowns([]);
+      setFilteredTowns([]);
     } finally {
       setLoadingDetails(false);
     }
   };
 
-  const loadDetailedView = () => {
-    if (allTowns.length > 0) {
-      const topTownUuids = allTowns.slice(0, 50).map(town => town.uuid);
-      fetchDetailedTowns(topTownUuids);
-      setViewMode('detailed');
-    }
-  };
-
+  // Load basic towns on mount
   useEffect(() => {
     fetchBasicTowns();
   }, []);
 
+  // Load detailed towns when in detailed view or when filters change
   useEffect(() => {
-    if (viewMode === 'detailed' && detailedTowns.length > 0) {
-      let filtered = detailedTowns.filter(town => {
-        const townName = town.name || '';
-        const mayorName = town.mayor?.name || '';
-        const nationName = town.nation?.name || '';
-        
-        return townName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               mayorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               nationName.toLowerCase().includes(searchTerm.toLowerCase());
-      });
-
-      if (selectedNation !== 'all') {
-        filtered = filtered.filter(town => town.nation?.name === selectedNation);
-      }
-
-      // Sort towns
-      filtered.sort((a, b) => {
-        switch (sortBy) {
-          case 'name':
-            return (a.name || '').localeCompare(b.name || '');
-          case 'balance':
-            return (b.stats?.balance || 0) - (a.stats?.balance || 0);
-          case 'residents':
-            return (b.stats?.numResidents || 0) - (a.stats?.numResidents || 0);
-          default:
-            return 0;
-        }
-      });
-
-      setFilteredTowns(filtered);
+    if (viewMode === 'detailed') {
+      fetchDetailedTowns(sortBy, searchTerm, selectedNation);
     }
-  }, [detailedTowns, searchTerm, sortBy, selectedNation, viewMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, sortBy, searchTerm, selectedNation]);
 
   const uniqueNations = Array.from(new Set(detailedTowns.map(town => town.nation?.name).filter(Boolean))).sort();
 
@@ -200,7 +198,7 @@ const TownBrowser = () => {
               </Button>
               <Button
                 variant={viewMode === 'detailed' ? 'default' : 'outline'}
-                onClick={loadDetailedView}
+                onClick={() => setViewMode('detailed')}
                 disabled={loadingDetails}
                 className="bg-blue-600 hover:bg-blue-700"
               >
