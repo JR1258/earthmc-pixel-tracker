@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -39,19 +38,25 @@ const ServerStatus = () => {
       setLoading(true);
       setError(null);
 
-      // Fetch server data from the correct endpoint
-      const serverResponse = await fetch('https://api.earthmc.net/v3/aurora/');
+      // Use CORS proxy for both requests
+      const proxyUrl = 'https://corsproxy.io/?';
+
+      // Fetch server data
+      const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
       if (!serverResponse.ok) throw new Error('Failed to fetch server data');
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
-      // Fetch towns for top 10
-      const townsResponse = await fetch('https://api.earthmc.net/v3/aurora/towns');
+      // Fetch towns data
+      const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
       if (!townsResponse.ok) throw new Error('Failed to fetch towns data');
       const townsData = await townsResponse.json();
       
-      // Sort by balance and get top 10
-      const sortedTowns = townsData
+      // Convert object to array if needed and sort by balance
+      let townsArray = Array.isArray(townsData) ? townsData : Object.values(townsData);
+      
+      const sortedTowns = townsArray
+        .filter((town: Town) => town.balance && town.balance > 0) // Only towns with actual balance
         .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
         .slice(0, 10);
       setTopTowns(sortedTowns);
@@ -109,27 +114,52 @@ const ServerStatus = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-green-400">
-                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : serverData?.stats.numOnlinePlayers || 0}
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (serverData?.stats.numOnlinePlayers || 0).toLocaleString()}
               </div>
               <div className="text-sm text-gray-400">Players Online</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-400">
-                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : serverData?.stats.numTowns || 0}
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (serverData?.stats.numTowns || 0).toLocaleString()}
               </div>
               <div className="text-sm text-gray-400">Active Towns</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-400">
-                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : serverData?.version || 'Unknown'}
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : (serverData?.stats.numNations || 0).toLocaleString()}
               </div>
-              <div className="text-sm text-gray-400">Version</div>
+              <div className="text-sm text-gray-400">Nations</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-yellow-400">
                 {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : 'Aurora'}
               </div>
               <div className="text-sm text-gray-400">Map</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Quick Stats Card */}
+      <Card className="bg-black/40 border-green-500/20 text-white">
+        <CardHeader>
+          <CardTitle className="text-green-400">Quick Stats</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
+              <span className="text-gray-400">Server</span>
+              <span className="font-semibold">EarthMC</span>
+            </div>
+            <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
+              <span className="text-gray-400">Version</span>
+              <span className="font-semibold">
+                {loading ? <Skeleton className="h-5 w-16" /> : serverData?.version || 'Unknown'}
+              </span>
+            </div>
+            <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
+              <span className="text-gray-400">Map</span>
+              <span className="font-semibold">Aurora</span>
             </div>
           </div>
         </CardContent>
@@ -150,18 +180,18 @@ const ServerStatus = () => {
           {loading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : (
+          ) : topTowns.length > 0 ? (
             <div className="space-y-3">
               {topTowns.map((town, index) => (
                 <div
                   key={town.name}
-                  className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors"
+                  className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors"
                 >
                   <div className="flex items-center space-x-3">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
                       index === 0 ? 'bg-yellow-500 text-black' :
                       index === 1 ? 'bg-gray-400 text-black' :
                       index === 2 ? 'bg-orange-600 text-white' :
@@ -170,15 +200,19 @@ const ServerStatus = () => {
                       {index + 1}
                     </div>
                     <div>
-                      <div className="font-semibold">{town.name}</div>
+                      <div className="font-semibold text-lg">{town.name}</div>
                       <div className="text-sm text-gray-400">
-                        Mayor: {town.mayor || 'Unknown'} • Nation: {town.nation || 'Unknown'}
+                        <span>Mayor: {town.mayor || 'Unknown'}</span>
+                        {town.nation && <span> • Nation: {town.nation}</span>}
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold text-green-400">
-                      ${(town.balance || 0).toLocaleString()}
+                    <div className="flex items-center space-x-1">
+                      <DollarSign className="w-4 h-4 text-yellow-400" />
+                      <span className="font-bold text-yellow-400 text-lg">
+                        {(town.balance || 0).toLocaleString()} Gold
+                      </span>
                     </div>
                     <div className="text-sm text-gray-400">
                       {(town.residents?.length || 0)} residents
@@ -186,6 +220,11 @@ const ServerStatus = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400">
+              <Crown className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No town data available</p>
             </div>
           )}
         </CardContent>
