@@ -58,36 +58,32 @@ const PlayerLookup = () => {
       setError(null);
       setHasSearched(true);
 
-      // Try direct API call first, if it fails due to CORS, use proxy
-      let response;
-      try {
-        response = await fetch('https://api.earthmc.net/v3/aurora/players', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: [searchTerm.trim()]
-          })
-        });
-      } catch (corsError) {
-        // If CORS fails, try using a CORS proxy
-        response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: [searchTerm.trim()]
-          })
-        });
-      }
+      // Use a different CORS proxy that better handles POST requests
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`;
+      
+      const response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: [searchTerm.trim()]
+        })
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      const playersData = await response.json();
+      const responseText = await response.text();
+      
+      // Check if response is valid JSON
+      let playersData;
+      try {
+        playersData = JSON.parse(responseText);
+      } catch (jsonError) {
+        throw new Error('Invalid response format from API');
+      }
       
       // The API returns an object with player names/UUIDs as keys
       const playerKeys = Object.keys(playersData);
@@ -105,11 +101,7 @@ const PlayerLookup = () => {
       setPlayerData(player);
     } catch (err) {
       console.error('Player lookup error:', err);
-      if (err instanceof Error && err.message.includes('CORS')) {
-        setError('Unable to fetch player data due to browser security restrictions. Please try using the application in a different environment.');
-      } else {
-        setError(err instanceof Error ? err.message : 'Player not found');
-      }
+      setError(err instanceof Error ? err.message : 'Player not found');
       setPlayerData(null);
     } finally {
       setLoading(false);
@@ -301,7 +293,7 @@ const PlayerLookup = () => {
             <p>• View detailed player information including town, nation, and ranks</p>
             <p>• See player balance, friends, and activity timeline</p>
             <p>• Data is fetched in real-time from the EarthMC API</p>
-            <p>• Note: Due to browser security restrictions, some features may require a backend proxy</p>
+            <p>• Note: Using CORS proxy for browser compatibility</p>
           </div>
         </CardContent>
       </Card>
