@@ -61,11 +61,11 @@ const NationList = () => {
         case 'name':
           return a.name.localeCompare(b.name);
         case 'balance':
-          return b.balance - a.balance;
+          return (b.balance || 0) - (a.balance || 0);
         case 'towns':
-          return b.towns.length - a.towns.length;
+          return (b.towns?.length || 0) - (a.towns?.length || 0);
         case 'residents':
-          return b.residents.length - a.residents.length;
+          return (b.residents?.length || 0) - (a.residents?.length || 0);
         default:
           return 0;
       }
@@ -73,6 +73,15 @@ const NationList = () => {
 
     setFilteredNations(filtered);
   }, [nations, searchTerm, sortBy]);
+
+  const formatBalance = (balance: number | undefined | null): string => {
+    if (balance === undefined || balance === null) return '$0';
+    return `$${balance.toLocaleString()}`;
+  };
+
+  const getArrayLength = (arr: any[] | undefined | null): number => {
+    return arr?.length || 0;
+  };
 
   if (error) {
     return (
@@ -164,7 +173,7 @@ const NationList = () => {
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-semibold text-green-400">
-                      ${nation.balance.toLocaleString()}
+                      {formatBalance(nation.balance)}
                     </div>
                   </div>
                 </div>
@@ -189,19 +198,19 @@ const NationList = () => {
                       <MapPin className="w-3 h-3" />
                       <span>Towns</span>
                     </span>
-                    <span>{nation.towns.length}</span>
+                    <span>{getArrayLength(nation.towns)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 flex items-center space-x-1">
                       <Users className="w-3 h-3" />
                       <span>Residents</span>
                     </span>
-                    <span>{nation.residents.length}</span>
+                    <span>{getArrayLength(nation.residents)}</span>
                   </div>
                 </div>
 
                 {/* Town list preview */}
-                {nation.towns.length > 0 && (
+                {nation.towns && nation.towns.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-700">
                     <div className="text-xs text-gray-400 mb-1">Towns:</div>
                     <div className="flex flex-wrap gap-1">
