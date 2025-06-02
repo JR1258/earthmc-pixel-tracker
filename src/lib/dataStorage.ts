@@ -165,3 +165,4 @@ const getLast7DaysLocal = (): (DailyStats | null)[] => {
   
   return result;
 };
+// Export local data functions for testing
