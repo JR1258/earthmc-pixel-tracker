@@ -388,16 +388,9 @@ const PlayerLookup = () => {
                                         
                                         {/* Friend Info */}
                                         <div className="flex-1 min-w-0">
-                                          <div className="flex items-center space-x-2">
-                                            <h5 className="text-sm font-semibold text-white group-hover/friend:text-yellow-400 transition-colors truncate">
-                                              {friend.name}
-                                            </h5>
-                                          </div>
-                                          <div className="flex items-center space-x-2 mt-1">
-                                            <span className="text-xs text-gray-500 font-mono">
-                                              {friend.uuid.split('-')[0]}...
-                                            </span>
-                                          </div>
+                                          <h5 className="text-sm font-semibold text-white group-hover/friend:text-yellow-400 transition-colors truncate">
+                                            {friend.name}
+                                          </h5>
                                         </div>
                                         
                                         {/* Friend Number */}
