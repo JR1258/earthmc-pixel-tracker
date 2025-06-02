@@ -1,12 +1,35 @@
-'use client';
 
-import { useEffect, useState } from 'react';
-import { Town } from '@/types/town';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Skeleton } from './ui/skeleton';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Users, MapPin, Crown, DollarSign, Activity, AlertCircle } from 'lucide-react';
+
+interface Town {
+  name: string;
+  mayor: string;
+  nation: string;
+  residents: string[];
+  balance: number;
+  chunks: number;
+  location: {
+    x: number;
+    z: number;
+  };
+}
+
+interface ServerData {
+  version: string;
+  stats: {
+    numOnlinePlayers: number;
+    numTowns: number;
+    numNations: number;
+    numResidents: number;
+  };
+}
 
 const ServerStatus = () => {
-  const [serverData, setServerData] = useState<any>(null);
+  const [serverData, setServerData] = useState<ServerData | null>(null);
   const [topTowns, setTopTowns] = useState<Town[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,29 +39,23 @@ const ServerStatus = () => {
       setLoading(true);
       setError(null);
 
+      // Fetch server data from the correct endpoint
       const serverResponse = await fetch('https://api.earthmc.net/v3/aurora/');
       if (!serverResponse.ok) throw new Error('Failed to fetch server data');
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
+      // Fetch towns for top 10
       const townsResponse = await fetch('https://api.earthmc.net/v3/aurora/towns');
-      if (!townsResponse.ok) throw new Error('Failed to fetch towns list');
-      const townList = await townsResponse.json();
-
-      const detailedRes = await fetch('https://api.earthmc.net/v3/aurora/towns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: townList.slice(0, 100).map((t: any) => t.name) })
-      });
-
-      if (!detailedRes.ok) throw new Error('Failed to fetch detailed town data');
-      const detailedTowns = await detailedRes.json();
-
-      const sortedTowns = detailedTowns
+      if (!townsResponse.ok) throw new Error('Failed to fetch towns data');
+      const townsData = await townsResponse.json();
+      
+      // Sort by balance and get top 10
+      const sortedTowns = townsData
         .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
         .slice(0, 10);
-
       setTopTowns(sortedTowns);
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       console.error('Error fetching server data:', err);
@@ -49,41 +66,130 @@ const ServerStatus = () => {
 
   useEffect(() => {
     fetchServerData();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchServerData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  return (
-    <div className="space-y-4">
-      {loading ? (
-        <Skeleton className="h-48 w-full" />
-      ) : error ? (
-        <div className="text-red-500">{error}</div>
-      ) : (
-        <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Server Info</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <div><strong>Online Players:</strong> {serverData?.players?.online}</div>
-              <div><strong>Uptime:</strong> {serverData?.uptime}</div>
-              <div><strong>TPS:</strong> {serverData?.tps}</div>
-            </CardContent>
-          </Card>
+  if (error) {
+    return (
+      <Card className="bg-red-900/20 border-red-500/20 text-white">
+        <CardContent className="p-6">
+          <div className="flex items-center space-x-2 text-red-400">
+            <AlertCircle className="w-5 h-5" />
+            <span>Error loading server data: {error}</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Top 10 Richest Towns</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {topTowns.map((town, idx) => (
-                <div key={town.uuid}>
-                  <strong>#{idx + 1} {town.name}</strong> — {town.balance}g
+  return (
+    <div className="space-y-6">
+      {/* Server Status Card */}
+      <Card className="bg-black/40 border-green-500/20 text-white">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-green-400 flex items-center space-x-2">
+                <Activity className="w-5 h-5" />
+                <span>Server Status</span>
+              </CardTitle>
+              <CardDescription className="text-gray-400">
+                Live server info and statistics
+              </CardDescription>
+            </div>
+            <Badge className="bg-green-600 hover:bg-green-700">
+              <div className="w-2 h-2 bg-green-300 rounded-full mr-2 animate-pulse" />
+              Online
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-400">
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : serverData?.stats.numOnlinePlayers || 0}
+              </div>
+              <div className="text-sm text-gray-400">Players Online</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-400">
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : serverData?.stats.numTowns || 0}
+              </div>
+              <div className="text-sm text-gray-400">Active Towns</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-400">
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : serverData?.version || 'Unknown'}
+              </div>
+              <div className="text-sm text-gray-400">Version</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-400">
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : 'Aurora'}
+              </div>
+              <div className="text-sm text-gray-400">Map</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Top Towns Card */}
+      <Card className="bg-black/40 border-green-500/20 text-white">
+        <CardHeader>
+          <CardTitle className="text-green-400 flex items-center space-x-2">
+            <Crown className="w-5 h-5" />
+            <span>Richest Towns</span>
+          </CardTitle>
+          <CardDescription className="text-gray-400">
+            Top 10 towns by bank balance
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {topTowns.map((town, index) => (
+                <div
+                  key={town.name}
+                  className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      index === 0 ? 'bg-yellow-500 text-black' :
+                      index === 1 ? 'bg-gray-400 text-black' :
+                      index === 2 ? 'bg-orange-600 text-white' :
+                      'bg-gray-600 text-white'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <div>
+                      <div className="font-semibold">{town.name}</div>
+                      <div className="text-sm text-gray-400">
+                        Mayor: {town.mayor || 'Unknown'} • Nation: {town.nation || 'Unknown'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-green-400">
+                      ${(town.balance || 0).toLocaleString()}
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      {(town.residents?.length || 0)} residents
+                    </div>
+                  </div>
                 </div>
               ))}
-            </CardContent>
-          </Card>
-        </>
-      )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
