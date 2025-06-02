@@ -103,13 +103,8 @@ const ServerStatus = () => {
 
   const getServerTimezone = () => {
     const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en', {
-      timeZone: 'America/New_York',
-      timeZoneName: 'short'
-    });
-    const parts = formatter.formatToParts(now);
-    const timeZone = parts.find(part => part.type === 'timeZoneName');
-    return timeZone ? timeZone.value : 'EST';
+    const estOffset = now.getTimezoneOffset() + 300; // EST is UTC-5
+    return estOffset === 0 ? 'EST' : 'EDT';
   };
 
   const getMinecraftTimeOfDay = () => {
@@ -199,45 +194,72 @@ const ServerStatus = () => {
           </Card>
         </div>
 
-        {/* Quick Stats Card - Simple Design */}
+        {/* Enhanced Quick Stats Card */}
         <div className="lg:col-span-1">
           <Card className="bg-black/40 border-green-500/20 text-white h-full">
             <CardHeader>
               <CardTitle className="text-green-400">Quick Stats</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <span className="text-gray-400">Server</span>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <Server className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-400">Server</span>
+                  </div>
                   <span className="font-semibold">EarthMC</span>
                 </div>
-                <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <span className="text-gray-400">Version</span>
+                
+                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <Activity className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-400">Version</span>
+                  </div>
                   <span className="font-semibold">
                     {loading ? <Skeleton className="h-5 w-16" /> : serverData?.version || 'Unknown'}
                   </span>
                 </div>
-                <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <span className="text-gray-400">Map</span>
+                
+                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <Globe className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-400">Map</span>
+                  </div>
                   <span className="font-semibold">Aurora</span>
                 </div>
-                <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <span className="text-gray-400">Server Time</span>
+                
+                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-400">Server Time</span>
+                  </div>
                   <div className="text-right">
                     <div className="font-semibold text-sm">{formatServerTime()}</div>
                     <div className="text-xs text-gray-500">{getServerTimezone()}</div>
                   </div>
                 </div>
-                <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <span className="text-gray-400">MC Time</span>
-                  <span className="font-semibold">{getMinecraftTimeOfDay().period} {getMinecraftTimeOfDay().icon}</span>
+                
+                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-lg">{getMinecraftTimeOfDay().icon}</span>
+                    <span className="text-gray-400">MC Time</span>
+                  </div>
+                  <span className="font-semibold">{getMinecraftTimeOfDay().period}</span>
                 </div>
-                <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <span className="text-gray-400">Weather</span>
+                
+                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <Cloud className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-400">Weather</span>
+                  </div>
                   <span className="font-semibold">Clear ☀️</span>
                 </div>
-                <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <span className="text-gray-400">Uptime</span>
+                
+                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <Activity className="w-4 h-4 text-green-400" />
+                    <span className="text-gray-400">Uptime</span>
+                  </div>
                   <span className="font-semibold text-green-400">{getUptime()}</span>
                 </div>
               </div>
