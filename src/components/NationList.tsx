@@ -1,29 +1,21 @@
+'use client';
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Crown, MapPin, Users, DollarSign, AlertCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Skeleton } from './ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Nation } from '@/types/nation';
 
-interface Nation {
-  name: string;
-  capital: string;
-  king: string;
-  towns: string[];
-  residents: string[];
-  balance: number;
-  color: string;
-}
+type SortOption = 'balance' | 'name' | 'towns' | 'residents';
 
 const NationList = () => {
   const [nations, setNations] = useState<Nation[]>([]);
   const [filteredNations, setFilteredNations] = useState<Nation[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('balance');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'balance' | 'towns' | 'residents'>('balance');
 
   const fetchNations = async () => {
     try {
@@ -31,11 +23,20 @@ const NationList = () => {
       setError(null);
 
       const response = await fetch('https://api.earthmc.net/v3/aurora/nations');
-      if (!response.ok) throw new Error('Failed to fetch nations data');
-      
-      const nationsData = await response.json();
-      setNations(nationsData);
-      setFilteredNations(nationsData);
+      if (!response.ok) throw new Error('Failed to fetch nation names');
+      const nationList = await response.json();
+
+      const detailedRes = await fetch('https://api.earthmc.net/v3/aurora/nations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: nationList.map((n: any) => n.name) })
+      });
+
+      if (!detailedRes.ok) throw new Error('Failed to fetch detailed nation data');
+      const detailedNations = await detailedRes.json();
+
+      setNations(detailedNations);
+      setFilteredNations(detailedNations);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       console.error('Error fetching nations:', err);
@@ -49,202 +50,70 @@ const NationList = () => {
   }, []);
 
   useEffect(() => {
-    let filtered = nations.filter(nation => {
-      const nationName = nation.name || '';
-      const nationKing = nation.king || '';
-      const nationCapital = nation.capital || '';
-      
-      return nationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             nationKing.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             nationCapital.toLowerCase().includes(searchTerm.toLowerCase());
+    let sorted = [...nations];
+
+    if (searchTerm) {
+      sorted = sorted.filter((nation) =>
+        nation.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        nation.king?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        nation.capital?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    sorted.sort((a, b) => {
+      if (sortOption === 'name') return a.name.localeCompare(b.name);
+      if (sortOption === 'balance') return (b.balance || 0) - (a.balance || 0);
+      if (sortOption === 'towns') return (b.towns?.length || 0) - (a.towns?.length || 0);
+      if (sortOption === 'residents') return (b.numResidents || 0) - (a.numResidents || 0);
+      return 0;
     });
 
-    // Sort nations
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return (a.name || '').localeCompare(b.name || '');
-        case 'balance':
-          return (b.balance || 0) - (a.balance || 0);
-        case 'towns':
-          return (b.towns?.length || 0) - (a.towns?.length || 0);
-        case 'residents':
-          return (b.residents?.length || 0) - (a.residents?.length || 0);
-        default:
-          return 0;
-      }
-    });
-
-    setFilteredNations(filtered);
-  }, [nations, searchTerm, sortBy]);
-
-  const formatBalance = (balance: number | undefined | null): string => {
-    if (balance === undefined || balance === null) return '$0';
-    return `$${balance.toLocaleString()}`;
-  };
-
-  const getArrayLength = (arr: any[] | undefined | null): number => {
-    return arr?.length || 0;
-  };
-
-  if (error) {
-    return (
-      <Card className="bg-red-900/20 border-red-500/20 text-white">
-        <CardContent className="p-6">
-          <div className="flex items-center space-x-2 text-red-400">
-            <AlertCircle className="w-5 h-5" />
-            <span>Error loading nations: {error}</span>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+    setFilteredNations(sorted);
+  }, [searchTerm, sortOption, nations]);
 
   return (
-    <div className="space-y-6">
-      {/* Search and Filters */}
-      <Card className="bg-black/40 border-green-500/20 text-white">
-        <CardHeader>
-          <CardTitle className="text-green-400 flex items-center space-x-2">
-            <Crown className="w-5 h-5" />
-            <span>Nations Browser</span>
-          </CardTitle>
-          <CardDescription className="text-gray-400">
-            Explore all nations on EarthMC Aurora
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search nations, kings, or capitals..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-gray-800/50 border-gray-600 text-white"
-              />
-            </div>
-            <Select value={sortBy} onValueChange={(value: 'name' | 'balance' | 'towns' | 'residents') => setSortBy(value)}>
-              <SelectTrigger className="w-full md:w-48 bg-gray-800/50 border-gray-600 text-white">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="balance">Balance</SelectItem>
-                <SelectItem value="towns">Towns</SelectItem>
-                <SelectItem value="residents">Residents</SelectItem>
-                <SelectItem value="name">Name</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="mt-4 text-sm text-gray-400">
-            Showing {filteredNations.length} of {nations.length} nations
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Nations Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {loading ? (
-          Array.from({ length: 9 }).map((_, i) => (
-            <Card key={i} className="bg-black/40 border-green-500/20">
-              <CardContent className="p-4">
-                <Skeleton className="h-6 w-32 mb-2" />
-                <Skeleton className="h-4 w-24 mb-4" />
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-3/4" />
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : (
-          filteredNations.map(nation => (
-            <Card key={nation.name} className="bg-black/40 border-green-500/20 text-white hover:bg-black/60 transition-colors">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h3 className="font-bold text-purple-400 text-lg mb-1">{nation.name}</h3>
-                    {nation.color && (
-                      <div className="flex items-center space-x-2 mb-2">
-                        <div 
-                          className="w-3 h-3 rounded-full border border-gray-500"
-                          style={{ backgroundColor: nation.color }}
-                        />
-                        <span className="text-xs text-gray-400">Nation Color</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-green-400">
-                      {formatBalance(nation.balance)}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400 flex items-center space-x-1">
-                      <Crown className="w-3 h-3" />
-                      <span>King</span>
-                    </span>
-                    <span>{nation.king}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400 flex items-center space-x-1">
-                      <MapPin className="w-3 h-3" />
-                      <span>Capital</span>
-                    </span>
-                    <span>{nation.capital}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400 flex items-center space-x-1">
-                      <MapPin className="w-3 h-3" />
-                      <span>Towns</span>
-                    </span>
-                    <span>{getArrayLength(nation.towns)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400 flex items-center space-x-1">
-                      <Users className="w-3 h-3" />
-                      <span>Residents</span>
-                    </span>
-                    <span>{getArrayLength(nation.residents)}</span>
-                  </div>
-                </div>
-
-                {/* Town list preview */}
-                {nation.towns && nation.towns.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-700">
-                    <div className="text-xs text-gray-400 mb-1">Towns:</div>
-                    <div className="flex flex-wrap gap-1">
-                      {nation.towns.slice(0, 3).map(town => (
-                        <Badge key={town} variant="outline" className="text-xs border-gray-600 text-gray-300">
-                          {town}
-                        </Badge>
-                      ))}
-                      {nation.towns.length > 3 && (
-                        <Badge variant="outline" className="text-xs border-gray-600 text-gray-400">
-                          +{nation.towns.length - 3} more
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))
-        )}
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-4">
+        <Input
+          placeholder="Search Nations..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="flex-1 min-w-[200px]"
+        />
+        <Select value={sortOption} onValueChange={(v: SortOption) => setSortOption(v)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Sort By" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="balance">Balance</SelectItem>
+            <SelectItem value="name">Name</SelectItem>
+            <SelectItem value="towns">Towns</SelectItem>
+            <SelectItem value="residents">Residents</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {!loading && filteredNations.length === 0 && (
-        <Card className="bg-black/40 border-gray-500/20 text-white">
-          <CardContent className="p-8 text-center">
-            <Crown className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No nations found</h3>
-            <p className="text-gray-400">Try adjusting your search criteria</p>
-          </CardContent>
-        </Card>
+      {loading ? (
+        <Skeleton className="h-48 w-full" />
+      ) : error ? (
+        <div className="text-red-500">{error}</div>
+      ) : (
+        <div className="space-y-2">
+          {filteredNations.map((nation) => (
+            <Card key={nation.uuid}>
+              <CardHeader>
+                <CardTitle>{nation.name}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-1">
+                <div><strong>Capital:</strong> {nation.capital?.name}</div>
+                <div><strong>King:</strong> {nation.king?.name}</div>
+                <div><strong>Towns:</strong> {nation.towns?.length}</div>
+                <div><strong>Residents:</strong> {nation.numResidents}</div>
+                <div><strong>Balance:</strong> {nation.balance}g</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );
