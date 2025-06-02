@@ -91,6 +91,13 @@ const TownBrowser = () => {
     return residents?.length || 0;
   };
 
+  const formatLocation = (location: { x: number; z: number } | undefined | null): string => {
+    if (!location || location.x === undefined || location.z === undefined) {
+      return 'Unknown';
+    }
+    return `${location.x}, ${location.z}`;
+  };
+
   if (error) {
     return (
       <Card className="bg-red-900/20 border-red-500/20 text-white">
@@ -210,7 +217,7 @@ const TownBrowser = () => {
                       <MapPin className="w-3 h-3" />
                       <span>Location</span>
                     </span>
-                    <span>{town.location.x}, {town.location.z}</span>
+                    <span>{formatLocation(town.location)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Chunks</span>
