@@ -4,15 +4,44 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, User, MapPin, Crown, Users, AlertCircle, Loader2 } from 'lucide-react';
+import { Search, User, MapPin, Crown, Users, AlertCircle, Loader2, DollarSign } from 'lucide-react';
 
 interface PlayerData {
   name: string;
-  town: string;
-  nation: string;
-  balance: number;
-  joinedTownAt: string;
-  isOnline: boolean | null; // null means unknown due to API limitation
+  uuid: string;
+  title?: string;
+  surname?: string;
+  formattedName?: string;
+  about?: string;
+  town?: {
+    name: string;
+    uuid: string;
+  };
+  nation?: {
+    name: string;
+    uuid: string;
+  };
+  timestamps: {
+    registered: number;
+    joinedTownAt?: number;
+    lastOnline?: number;
+  };
+  status: {
+    isOnline: boolean;
+    isNPC: boolean;
+    isMayor: boolean;
+    isKing: boolean;
+    hasTown: boolean;
+    hasNation: boolean;
+  };
+  stats: {
+    balance: number;
+    numFriends: number;
+  };
+  ranks: {
+    townRanks: string[];
+    nationRanks: string[];
+  };
 }
 
 const PlayerLookup = () => {
@@ -21,7 +50,6 @@ const PlayerLookup = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  const [onlineStatusUnavailable, setOnlineStatusUnavailable] = useState(false);
 
   const searchPlayer = async () => {
     if (!searchTerm.trim()) return;
@@ -30,52 +58,27 @@ const PlayerLookup = () => {
       setLoading(true);
       setError(null);
       setHasSearched(true);
-      setOnlineStatusUnavailable(false);
 
-      // Try to check if player is online, but handle gracefully if it fails
-      let isOnline: boolean | null = null;
-      try {
-        const onlineResponse = await fetch('https://api.earthmc.net/v3/aurora/online');
-        if (onlineResponse.ok) {
-          const onlineData = await onlineResponse.json();
-          isOnline = onlineData.players?.includes(searchTerm) || false;
-        } else {
-          console.log('Online endpoint not available');
-          setOnlineStatusUnavailable(true);
-          isOnline = null; // Unknown status
-        }
-      } catch (onlineErr) {
-        console.log('Failed to fetch online data:', onlineErr);
-        setOnlineStatusUnavailable(true);
-        isOnline = null;
+      // Use POST request to get detailed player data
+      const response = await fetch('https://api.earthmc.net/v3/aurora/players', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: [searchTerm.trim()]
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch player data');
+      
+      const playersData = await response.json();
+      
+      if (!playersData || playersData.length === 0) {
+        throw new Error('Player not found');
       }
 
-      // Get all residents data (this requires fetching towns)
-      const townsResponse = await fetch('https://api.earthmc.net/v3/aurora/towns');
-      if (!townsResponse.ok) throw new Error('Failed to fetch towns data');
-      const townsData = await townsResponse.json();
-
-      // Find the player's town
-      const playerTown = townsData.find((town: any) => 
-        town.residents?.some((resident: string) => 
-          resident?.toLowerCase() === searchTerm.toLowerCase()
-        )
-      );
-
-      if (!playerTown) {
-        throw new Error('Player not found or not a resident of any town');
-      }
-
-      const playerInfo: PlayerData = {
-        name: searchTerm,
-        town: playerTown.name || 'Unknown',
-        nation: playerTown.nation || 'Unknown',
-        balance: 0, // This would require a different API endpoint
-        joinedTownAt: 'Unknown', // This would require historical data
-        isOnline
-      };
-
-      setPlayerData(playerInfo);
+      setPlayerData(playersData[0]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Player not found');
       setPlayerData(null);
@@ -89,20 +92,12 @@ const PlayerLookup = () => {
     searchPlayer();
   };
 
+  const formatDate = (timestamp: number) => {
+    return new Date(timestamp).toLocaleDateString();
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* API Warning */}
-      {onlineStatusUnavailable && (
-        <Card className="bg-yellow-900/20 border-yellow-500/20 text-white">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2 text-yellow-400">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm">Online status unavailable - EarthMC API endpoint not found</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Search Card */}
       <Card className="bg-black/40 border-green-500/20 text-white">
         <CardHeader>
@@ -111,7 +106,7 @@ const PlayerLookup = () => {
             <span>Player Lookup</span>
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Search for any player on EarthMC to see their town and nation info
+            Search for any player on EarthMC to see their detailed information
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -119,7 +114,7 @@ const PlayerLookup = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Enter player username..."
+                placeholder="Enter player username or UUID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 bg-gray-800/50 border-gray-600 text-white"
@@ -163,16 +158,24 @@ const PlayerLookup = () => {
                       <User className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold">{playerData.name}</h3>
+                      <h3 className="text-xl font-bold">
+                        {playerData.formattedName || playerData.name}
+                      </h3>
                       <div className="flex items-center space-x-2">
-                        {playerData.isOnline === true && (
+                        {playerData.status.isOnline && (
                           <Badge className="bg-green-600">Online</Badge>
                         )}
-                        {playerData.isOnline === false && (
+                        {!playerData.status.isOnline && (
                           <Badge className="bg-gray-600">Offline</Badge>
                         )}
-                        {playerData.isOnline === null && (
-                          <Badge className="bg-yellow-600">Status Unknown</Badge>
+                        {playerData.status.isKing && (
+                          <Badge className="bg-purple-600">King</Badge>
+                        )}
+                        {playerData.status.isMayor && (
+                          <Badge className="bg-blue-600">Mayor</Badge>
+                        )}
+                        {playerData.status.isNPC && (
+                          <Badge className="bg-orange-600">NPC</Badge>
                         )}
                       </div>
                     </div>
@@ -182,52 +185,74 @@ const PlayerLookup = () => {
                 {/* Player Details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-4">
-                    <div className="p-4 bg-gray-800/50 rounded-lg">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <MapPin className="w-4 h-4 text-blue-400" />
-                        <span className="text-sm font-semibold text-blue-400">Town</span>
+                    {playerData.town && (
+                      <div className="p-4 bg-gray-800/50 rounded-lg">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <MapPin className="w-4 h-4 text-blue-400" />
+                          <span className="text-sm font-semibold text-blue-400">Town</span>
+                        </div>
+                        <div className="text-lg font-bold">{playerData.town.name}</div>
+                        {playerData.ranks.townRanks.length > 0 && (
+                          <div className="text-sm text-gray-400">
+                            Ranks: {playerData.ranks.townRanks.join(', ')}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-lg font-bold">{playerData.town}</div>
-                    </div>
+                    )}
 
-                    <div className="p-4 bg-gray-800/50 rounded-lg">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Crown className="w-4 h-4 text-purple-400" />
-                        <span className="text-sm font-semibold text-purple-400">Nation</span>
+                    {playerData.nation && (
+                      <div className="p-4 bg-gray-800/50 rounded-lg">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <Crown className="w-4 h-4 text-purple-400" />
+                          <span className="text-sm font-semibold text-purple-400">Nation</span>
+                        </div>
+                        <div className="text-lg font-bold">{playerData.nation.name}</div>
+                        {playerData.ranks.nationRanks.length > 0 && (
+                          <div className="text-sm text-gray-400">
+                            Ranks: {playerData.ranks.nationRanks.join(', ')}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-lg font-bold">{playerData.nation}</div>
-                    </div>
+                    )}
                   </div>
 
                   <div className="space-y-4">
                     <div className="p-4 bg-gray-800/50 rounded-lg">
                       <div className="flex items-center space-x-2 mb-2">
-                        <Users className="w-4 h-4 text-green-400" />
-                        <span className="text-sm font-semibold text-green-400">Status</span>
+                        <DollarSign className="w-4 h-4 text-green-400" />
+                        <span className="text-sm font-semibold text-green-400">Balance</span>
                       </div>
-                      <div className="text-lg font-bold">
-                        {playerData.isOnline === true && 'Currently Online'}
-                        {playerData.isOnline === false && 'Offline'}
-                        {playerData.isOnline === null && 'Status Unknown'}
-                      </div>
+                      <div className="text-lg font-bold">${playerData.stats.balance.toLocaleString()}</div>
                     </div>
 
                     <div className="p-4 bg-gray-800/50 rounded-lg">
-                      <div className="text-sm text-gray-400 mb-2">Player Info</div>
-                      <div className="space-y-1 text-sm">
-                        <div>Member of {playerData.town}</div>
-                        <div>Citizen of {playerData.nation}</div>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Users className="w-4 h-4 text-yellow-400" />
+                        <span className="text-sm font-semibold text-yellow-400">Friends</span>
                       </div>
+                      <div className="text-lg font-bold">{playerData.stats.numFriends}</div>
                     </div>
                   </div>
                 </div>
 
                 {/* Additional Info */}
-                <div className="p-4 bg-blue-900/20 border border-blue-500/20 rounded-lg">
-                  <div className="text-blue-400 text-sm font-semibold mb-2">Note</div>
-                  <div className="text-sm text-gray-300">
-                    Player data is fetched from the EarthMC API. Some detailed statistics like balance, 
-                    join dates, and online status may not be available through the public API.
+                {playerData.about && (
+                  <div className="p-4 bg-gray-800/50 rounded-lg">
+                    <div className="text-sm font-semibold text-gray-400 mb-2">About</div>
+                    <div className="text-sm">{playerData.about}</div>
+                  </div>
+                )}
+
+                <div className="p-4 bg-gray-800/50 rounded-lg">
+                  <div className="text-sm font-semibold text-gray-400 mb-2">Timeline</div>
+                  <div className="space-y-1 text-sm">
+                    <div>Registered: {formatDate(playerData.timestamps.registered)}</div>
+                    {playerData.timestamps.joinedTownAt && (
+                      <div>Joined Town: {formatDate(playerData.timestamps.joinedTownAt)}</div>
+                    )}
+                    {playerData.timestamps.lastOnline && (
+                      <div>Last Online: {formatDate(playerData.timestamps.lastOnline)}</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -243,10 +268,10 @@ const PlayerLookup = () => {
         </CardHeader>
         <CardContent>
           <div className="text-sm text-gray-400 space-y-2">
-            <p>• Enter any Minecraft username to search for their EarthMC data</p>
-            <p>• See which town and nation they belong to</p>
-            <p>• Check their status (when API is available)</p>
-            <p>• Data is updated in real-time from the EarthMC API</p>
+            <p>• Enter any Minecraft username or UUID to search</p>
+            <p>• View detailed player information including town, nation, and ranks</p>
+            <p>• See player balance, friends, and activity timeline</p>
+            <p>• Data is fetched in real-time from the EarthMC API</p>
           </div>
         </CardContent>
       </Card>

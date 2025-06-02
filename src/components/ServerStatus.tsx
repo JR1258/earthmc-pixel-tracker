@@ -18,35 +18,32 @@ interface Town {
   };
 }
 
+interface ServerData {
+  version: string;
+  stats: {
+    numOnlinePlayers: number;
+    numTowns: number;
+    numNations: number;
+    numResidents: number;
+  };
+}
+
 const ServerStatus = () => {
-  const [onlinePlayerCount, setOnlinePlayerCount] = useState<number>(0);
+  const [serverData, setServerData] = useState<ServerData | null>(null);
   const [topTowns, setTopTowns] = useState<Town[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [apiWarning, setApiWarning] = useState<string | null>(null);
 
   const fetchServerData = async () => {
     try {
       setLoading(true);
       setError(null);
-      setApiWarning(null);
 
-      // Try to fetch online players, but handle gracefully if it fails
-      try {
-        const onlineResponse = await fetch('https://api.earthmc.net/v3/aurora/online');
-        if (onlineResponse.ok) {
-          const onlineData = await onlineResponse.json();
-          setOnlinePlayerCount(onlineData.players?.length || 0);
-        } else {
-          console.log('Online endpoint not available, using placeholder data');
-          setApiWarning('Online player count unavailable - API endpoint not found');
-          setOnlinePlayerCount(0); // Set to 0 as placeholder
-        }
-      } catch (onlineErr) {
-        console.log('Failed to fetch online data:', onlineErr);
-        setApiWarning('Online player count unavailable');
-        setOnlinePlayerCount(0);
-      }
+      // Fetch server data from the correct endpoint
+      const serverResponse = await fetch('https://api.earthmc.net/v3/aurora/');
+      if (!serverResponse.ok) throw new Error('Failed to fetch server data');
+      const serverInfo = await serverResponse.json();
+      setServerData(serverInfo);
 
       // Fetch towns for top 10
       const townsResponse = await fetch('https://api.earthmc.net/v3/aurora/towns');
@@ -89,18 +86,6 @@ const ServerStatus = () => {
 
   return (
     <div className="space-y-6">
-      {/* API Warning */}
-      {apiWarning && (
-        <Card className="bg-yellow-900/20 border-yellow-500/20 text-white">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2 text-yellow-400">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm">{apiWarning}</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Server Status Card */}
       <Card className="bg-black/40 border-green-500/20 text-white">
         <CardHeader>
@@ -124,21 +109,19 @@ const ServerStatus = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-green-400">
-                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : onlinePlayerCount}
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : serverData?.stats.numOnlinePlayers || 0}
               </div>
-              <div className="text-sm text-gray-400">
-                Players Online{apiWarning ? '*' : ''}
-              </div>
+              <div className="text-sm text-gray-400">Players Online</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-400">
-                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : topTowns.length}
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : serverData?.stats.numTowns || 0}
               </div>
               <div className="text-sm text-gray-400">Active Towns</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-400">
-                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : '1.20.1'}
+                {loading ? <Skeleton className="h-8 w-16 mx-auto" /> : serverData?.version || 'Unknown'}
               </div>
               <div className="text-sm text-gray-400">Version</div>
             </div>
