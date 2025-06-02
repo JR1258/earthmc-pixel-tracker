@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -72,7 +71,7 @@ const TownBrowser = () => {
         case 'balance':
           return (b.balance || 0) - (a.balance || 0);
         case 'residents':
-          return b.residents.length - a.residents.length;
+          return (b.residents?.length || 0) - (a.residents?.length || 0);
         default:
           return 0;
       }
@@ -86,6 +85,10 @@ const TownBrowser = () => {
   const formatBalance = (balance: number | undefined | null): string => {
     if (balance === undefined || balance === null) return '$0';
     return `$${balance.toLocaleString()}`;
+  };
+
+  const getResidentCount = (residents: string[] | undefined | null): number => {
+    return residents?.length || 0;
   };
 
   if (error) {
@@ -200,7 +203,7 @@ const TownBrowser = () => {
                       <Users className="w-3 h-3" />
                       <span>Residents</span>
                     </span>
-                    <span>{town.residents.length}</span>
+                    <span>{getResidentCount(town.residents)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 flex items-center space-x-1">
