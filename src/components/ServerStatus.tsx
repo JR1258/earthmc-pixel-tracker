@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Users, MapPin, Crown, DollarSign, Activity, AlertCircle, Clock, Cloud, Globe, Server, TrendingUp, Zap, Shield } from 'lucide-react';
+import { Users, MapPin, Crown, DollarSign, Activity, AlertCircle, Clock, Cloud, Globe, Server, TrendingUp, Zap, Shield, BarChart3, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface Town {
   name: string;
@@ -33,6 +33,14 @@ interface ServerData {
   };
 }
 
+interface DailyStats {
+  date: string;
+  residents: number;
+  towns: number;
+  nations: number;
+  onlinePlayers: number;
+}
+
 const ServerStatus = () => {
   const [serverData, setServerData] = useState<ServerData | null>(null);
   const [topTowns, setTopTowns] = useState<Town[]>([]);
@@ -43,6 +51,33 @@ const ServerStatus = () => {
     // Generate a stable uptime that doesn't change every render
     const baseUptime = 3 * 24 + 14; // 3 days 14 hours as base
     return baseUptime;
+  });
+
+  // Mock historical data - in a real app, this would come from your backend
+  const [historicalData] = useState<DailyStats[]>(() => {
+    const data: DailyStats[] = [];
+    const today = new Date();
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      
+      // Generate realistic mock data with growth trends
+      const baseResidents = 28000 + (Math.random() * 2000);
+      const baseTowns = 4000 + (Math.random() * 200);
+      const baseNations = 450 + (Math.random() * 20);
+      const baseOnline = 120 + (Math.random() * 80);
+      
+      data.push({
+        date: date.toISOString().split('T')[0],
+        residents: Math.floor(baseResidents + (6 - i) * 50), // Growth over time
+        towns: Math.floor(baseTowns + (6 - i) * 8),
+        nations: Math.floor(baseNations + (6 - i) * 2),
+        onlinePlayers: Math.floor(baseOnline + (Math.random() * 40 - 20)) // More volatile
+      });
+    }
+    
+    return data;
   });
 
   const fetchServerData = async () => {
@@ -133,6 +168,58 @@ const ServerStatus = () => {
     const days = Math.floor(serverUptime / 24);
     const hours = serverUptime % 24;
     return `${days}d ${hours}h`;
+  };
+
+  const calculateDailyChange = (current: number, previous: number) => {
+    const change = current - previous;
+    const percentage = previous > 0 ? ((change / previous) * 100) : 0;
+    return { change, percentage };
+  };
+
+  const getLatestData = () => {
+    if (historicalData.length < 2) return null;
+    const today = historicalData[historicalData.length - 1];
+    const yesterday = historicalData[historicalData.length - 2];
+    
+    return {
+      residents: calculateDailyChange(today.residents, yesterday.residents),
+      towns: calculateDailyChange(today.towns, yesterday.towns),
+      nations: calculateDailyChange(today.nations, yesterday.nations),
+    };
+  };
+
+  const dailyChanges = getLatestData();
+
+  const SimpleChart = ({ data, dataKey, color }: { data: DailyStats[], dataKey: keyof DailyStats, color: string }) => {
+    const maxValue = Math.max(...data.map(d => d[dataKey] as number));
+    const minValue = Math.min(...data.map(d => d[dataKey] as number));
+    const range = maxValue - minValue;
+    
+    return (
+      <div className="h-24 flex items-end space-x-1">
+        {data.map((point, index) => {
+          const value = point[dataKey] as number;
+          const height = range > 0 ? ((value - minValue) / range) * 80 + 8 : 8;
+          
+          return (
+            <div
+              key={index}
+              className={`flex-1 rounded-t-sm transition-all duration-300 hover:opacity-80 relative group`}
+              style={{ 
+                height: `${height}px`, 
+                backgroundColor: color,
+                minHeight: '8px'
+              }}
+            >
+              {/* Tooltip */}
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
+                {new Date(point.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: {value.toLocaleString()}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   if (error) {
@@ -250,68 +337,115 @@ const ServerStatus = () => {
         </div>
       </div>
 
-      {/* Server Statistics Grid - Fills the empty space */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-black/40 border-green-500/20 text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <Users className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">
-                  {loading ? <Skeleton className="h-6 w-12" /> : (serverData?.stats.numResidents || 0).toLocaleString()}
+      {/* Growth Trends Chart - Fills the empty space */}
+      <Card className="bg-black/40 border-green-500/20 text-white">
+        <CardHeader>
+          <CardTitle className="text-green-400 flex items-center space-x-2">
+            <BarChart3 className="w-5 h-5" />
+            <span>7-Day Growth Trends</span>
+          </CardTitle>
+          <CardDescription className="text-gray-400">
+            Daily server growth and activity metrics
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Residents Chart */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-blue-400">Total Residents</h4>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl font-bold">
+                      {loading ? <Skeleton className="h-8 w-16" /> : (serverData?.stats.numResidents || 0).toLocaleString()}
+                    </span>
+                    {dailyChanges?.residents && (
+                      <div className={`flex items-center space-x-1 text-sm ${
+                        dailyChanges.residents.change >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {dailyChanges.residents.change >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                        <span>{Math.abs(dailyChanges.residents.change)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="text-sm text-gray-400">Total Residents</div>
               </div>
+              <SimpleChart data={historicalData} dataKey="residents" color="#60a5fa" />
+              <div className="text-xs text-gray-400 text-center">Past 7 days</div>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card className="bg-black/40 border-green-500/20 text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">
-                  {loading ? <Skeleton className="h-6 w-12" /> : ((serverData?.stats.numTowns || 0) * 16).toLocaleString()}
+            {/* Towns Chart */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-purple-400">Active Towns</h4>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl font-bold">
+                      {loading ? <Skeleton className="h-8 w-16" /> : (serverData?.stats.numTowns || 0).toLocaleString()}
+                    </span>
+                    {dailyChanges?.towns && (
+                      <div className={`flex items-center space-x-1 text-sm ${
+                        dailyChanges.towns.change >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {dailyChanges.towns.change >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                        <span>{Math.abs(dailyChanges.towns.change)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="text-sm text-gray-400">Claimed Chunks</div>
               </div>
+              <SimpleChart data={historicalData} dataKey="towns" color="#a855f7" />
+              <div className="text-xs text-gray-400 text-center">Past 7 days</div>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card className="bg-black/40 border-green-500/20 text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-yellow-600 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-white" />
+            {/* Nations Chart */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-yellow-400">Nations</h4>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl font-bold">
+                      {loading ? <Skeleton className="h-8 w-16" /> : (serverData?.stats.numNations || 0).toLocaleString()}
+                    </span>
+                    {dailyChanges?.nations && (
+                      <div className={`flex items-center space-x-1 text-sm ${
+                        dailyChanges.nations.change >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {dailyChanges.nations.change >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                        <span>{Math.abs(dailyChanges.nations.change)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div>
-                <div className="text-2xl font-bold">19.8</div>
-                <div className="text-sm text-gray-400">Server TPS</div>
-              </div>
+              <SimpleChart data={historicalData} dataKey="nations" color="#eab308" />
+              <div className="text-xs text-gray-400 text-center">Past 7 days</div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card className="bg-black/40 border-green-500/20 text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
-                <Shield className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold">Excellent</div>
-                <div className="text-sm text-gray-400">Performance</div>
+          {/* Summary Stats */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-700">
+            <div className="text-center p-3 bg-gray-800/30 rounded-lg">
+              <div className="text-sm text-gray-400">Weekly Growth</div>
+              <div className="text-lg font-bold text-green-400">
+                +{dailyChanges ? dailyChanges.residents.change * 7 : 0} residents
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+            <div className="text-center p-3 bg-gray-800/30 rounded-lg">
+              <div className="text-sm text-gray-400">New Towns</div>
+              <div className="text-lg font-bold text-blue-400">
+                +{dailyChanges ? dailyChanges.towns.change * 7 : 0} this week
+              </div>
+            </div>
+            <div className="text-center p-3 bg-gray-800/30 rounded-lg">
+              <div className="text-sm text-gray-400">Growth Rate</div>
+              <div className="text-lg font-bold text-purple-400">
+                {dailyChanges ? dailyChanges.residents.percentage.toFixed(1) : 0}% daily
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Richest Towns Card */}
       <Card className="bg-black/40 border-green-500/20 text-white">
