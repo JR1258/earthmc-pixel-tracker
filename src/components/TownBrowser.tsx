@@ -17,8 +17,8 @@ interface DetailedTown {
   name: string;
   uuid: string;
   board?: string;
-  founder: string;
-  mayor: {
+  founder?: string;
+  mayor?: {
     name: string;
     uuid: string;
   };
@@ -26,11 +26,11 @@ interface DetailedTown {
     name: string;
     uuid: string;
   };
-  timestamps: {
+  timestamps?: {
     registered: number;
     joinedNationAt?: number;
   };
-  status: {
+  status?: {
     isPublic: boolean;
     isOpen: boolean;
     isNeutral: boolean;
@@ -38,20 +38,20 @@ interface DetailedTown {
     isRuined: boolean;
     hasNation: boolean;
   };
-  stats: {
+  stats?: {
     numTownBlocks: number;
     maxTownBlocks: number;
     numResidents: number;
     balance: number;
   };
-  coordinates: {
-    spawn: {
+  coordinates?: {
+    spawn?: {
       x: number;
       z: number;
     };
     homeBlock: [number, number];
   };
-  residents: Array<{
+  residents?: Array<{
     name: string;
     uuid: string;
   }>;
@@ -67,18 +67,22 @@ const TownBrowser = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'balance' | 'residents'>('balance');
   const [selectedNation, setSelectedNation] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'basic' | 'detailed'>('basic');
 
-  const fetchBasicTowns = async () => {
+  const fetchTowns = async () => {
     try {
       setLoading(true);
       setError(null);
 
+      // Fetch basic towns list
       const response = await fetch('https://api.earthmc.net/v3/aurora/towns');
       if (!response.ok) throw new Error('Failed to fetch towns data');
       
       const townsData = await response.json();
       setAllTowns(townsData);
+
+      // Automatically fetch detailed data for top 50 towns
+      await fetchDetailedTowns(townsData.slice(0, 50).map((town: BaseTown) => town.uuid));
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       console.error('Error fetching towns:', err);
@@ -91,14 +95,13 @@ const TownBrowser = () => {
     try {
       setLoadingDetails(true);
       
-      // Fetch detailed data for selected towns using POST
       const response = await fetch('https://api.earthmc.net/v3/aurora/towns', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          query: townUuids.slice(0, 50) // Limit to prevent too large requests
+          query: townUuids
         })
       });
 
@@ -114,29 +117,51 @@ const TownBrowser = () => {
     }
   };
 
-  const loadDetailedView = () => {
-    if (allTowns.length > 0) {
-      const topTownUuids = allTowns.slice(0, 50).map(town => town.uuid);
-      fetchDetailedTowns(topTownUuids);
-      setViewMode('detailed');
+  const searchTowns = async () => {
+    if (!searchTerm.trim()) {
+      setFilteredTowns(detailedTowns);
+      return;
     }
+
+    try {
+      // Try to search by exact name first
+      const response = await fetch('https://api.earthmc.net/v3/aurora/towns', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: [searchTerm.trim()]
+        })
+      });
+
+      if (response.ok) {
+        const searchResults = await response.json();
+        if (searchResults.length > 0) {
+          setFilteredTowns(searchResults);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+    }
+
+    // Fallback to local filtering
+    const filtered = detailedTowns.filter(town => 
+      town.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      town.mayor?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      town.nation?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredTowns(filtered);
   };
 
   useEffect(() => {
-    fetchBasicTowns();
+    fetchTowns();
   }, []);
 
   useEffect(() => {
-    if (viewMode === 'detailed' && detailedTowns.length > 0) {
-      let filtered = detailedTowns.filter(town => {
-        const townName = town.name || '';
-        const mayorName = town.mayor?.name || '';
-        const nationName = town.nation?.name || '';
-        
-        return townName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               mayorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               nationName.toLowerCase().includes(searchTerm.toLowerCase());
-      });
+    if (detailedTowns.length > 0) {
+      let filtered = searchTerm ? filteredTowns : detailedTowns;
 
       if (selectedNation !== 'all') {
         filtered = filtered.filter(town => town.nation?.name === selectedNation);
@@ -156,9 +181,11 @@ const TownBrowser = () => {
         }
       });
 
-      setFilteredTowns(filtered);
+      if (!searchTerm) {
+        setFilteredTowns(filtered);
+      }
     }
-  }, [detailedTowns, searchTerm, sortBy, selectedNation, viewMode]);
+  }, [detailedTowns, selectedNation, sortBy]);
 
   const uniqueNations = Array.from(new Set(detailedTowns.map(town => town.nation?.name).filter(Boolean))).sort();
 
@@ -185,70 +212,54 @@ const TownBrowser = () => {
             <span>Town Browser</span>
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Search and explore all towns on EarthMC
+            Search and explore all towns on EarthMC (showing top 50 by default)
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="flex gap-2">
-              <Button
-                variant={viewMode === 'basic' ? 'default' : 'outline'}
-                onClick={() => setViewMode('basic')}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                Basic View ({allTowns.length} towns)
-              </Button>
-              <Button
-                variant={viewMode === 'detailed' ? 'default' : 'outline'}
-                onClick={loadDetailedView}
-                disabled={loadingDetails}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                {loadingDetails ? 'Loading...' : 'Detailed View (Top 50)'}
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search towns by name, mayor, or nation..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && searchTowns()}
+                  className="pl-10 bg-gray-800/50 border-gray-600 text-white"
+                />
+              </div>
+              <Button onClick={searchTowns} className="bg-green-600 hover:bg-green-700">
+                <Search className="w-4 h-4 mr-2" />
+                Search
               </Button>
             </div>
 
-            {viewMode === 'detailed' && (
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    placeholder="Search towns, mayors, or nations..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 bg-gray-800/50 border-gray-600 text-white"
-                  />
-                </div>
-                <Select value={selectedNation} onValueChange={setSelectedNation}>
-                  <SelectTrigger className="w-full md:w-48 bg-gray-800/50 border-gray-600 text-white">
-                    <SelectValue placeholder="Filter by nation" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Nations</SelectItem>
-                    {uniqueNations.map(nation => (
-                      <SelectItem key={nation} value={nation}>{nation}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={sortBy} onValueChange={(value: 'name' | 'balance' | 'residents') => setSortBy(value)}>
-                  <SelectTrigger className="w-full md:w-48 bg-gray-800/50 border-gray-600 text-white">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="balance">Balance</SelectItem>
-                    <SelectItem value="residents">Residents</SelectItem>
-                    <SelectItem value="name">Name</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="flex flex-col md:flex-row gap-4">
+              <Select value={selectedNation} onValueChange={setSelectedNation}>
+                <SelectTrigger className="w-full md:w-48 bg-gray-800/50 border-gray-600 text-white">
+                  <SelectValue placeholder="Filter by nation" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Nations</SelectItem>
+                  {uniqueNations.map(nation => (
+                    <SelectItem key={nation} value={nation}>{nation}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={(value: 'name' | 'balance' | 'residents') => setSortBy(value)}>
+                <SelectTrigger className="w-full md:w-48 bg-gray-800/50 border-gray-600 text-white">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="balance">Balance</SelectItem>
+                  <SelectItem value="residents">Residents</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             <div className="text-sm text-gray-400">
-              {viewMode === 'basic' 
-                ? `Showing ${allTowns.length} towns (basic info)` 
-                : `Showing ${filteredTowns.length} of ${detailedTowns.length} towns (detailed info)`
-              }
+              Showing {filteredTowns.length} of {detailedTowns.length} towns (detailed info)
             </div>
           </div>
         </CardContent>
@@ -256,42 +267,7 @@ const TownBrowser = () => {
 
       {/* Towns Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {loading ? (
-          Array.from({ length: 9 }).map((_, i) => (
-            <Card key={i} className="bg-black/40 border-green-500/20">
-              <CardContent className="p-4">
-                <Skeleton className="h-6 w-32 mb-2" />
-                <Skeleton className="h-4 w-24 mb-4" />
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-3/4" />
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : viewMode === 'basic' ? (
-          allTowns.map(town => (
-            <Card key={town.uuid} className="bg-black/40 border-green-500/20 text-white hover:bg-black/60 transition-colors">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-bold text-green-400 text-lg">{town.name}</h3>
-                    <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
-                      Basic Info
-                    </Badge>
-                  </div>
-                </div>
-                
-                <div className="space-y-2 text-sm">
-                  <div className="text-gray-400">
-                    Switch to detailed view to see more information
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : loadingDetails ? (
+        {loading || loadingDetails ? (
           Array.from({ length: 9 }).map((_, i) => (
             <Card key={i} className="bg-black/40 border-green-500/20">
               <CardContent className="p-4">
@@ -318,10 +294,10 @@ const TownBrowser = () => {
                           {town.nation.name}
                         </Badge>
                       )}
-                      {town.status.isCapital && (
+                      {town.status?.isCapital && (
                         <Badge className="text-xs bg-purple-600">Capital</Badge>
                       )}
-                      {town.status.isRuined && (
+                      {town.status?.isRuined && (
                         <Badge className="text-xs bg-red-600">Ruined</Badge>
                       )}
                     </div>
@@ -358,9 +334,9 @@ const TownBrowser = () => {
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Status</span>
                     <div className="flex gap-1">
-                      {town.status.isPublic && <Badge className="text-xs bg-green-600">Public</Badge>}
-                      {town.status.isOpen && <Badge className="text-xs bg-blue-600">Open</Badge>}
-                      {town.status.isNeutral && <Badge className="text-xs bg-yellow-600">Neutral</Badge>}
+                      {town.status?.isPublic && <Badge className="text-xs bg-green-600">Public</Badge>}
+                      {town.status?.isOpen && <Badge className="text-xs bg-blue-600">Open</Badge>}
+                      {town.status?.isNeutral && <Badge className="text-xs bg-yellow-600">Neutral</Badge>}
                     </div>
                   </div>
                 </div>
@@ -370,7 +346,7 @@ const TownBrowser = () => {
         )}
       </div>
 
-      {!loading && viewMode === 'detailed' && filteredTowns.length === 0 && detailedTowns.length > 0 && (
+      {!loading && !loadingDetails && filteredTowns.length === 0 && (
         <Card className="bg-black/40 border-gray-500/20 text-white">
           <CardContent className="p-8 text-center">
             <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-4" />

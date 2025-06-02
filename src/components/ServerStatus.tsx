@@ -3,19 +3,36 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Users, MapPin, Crown, DollarSign, Activity, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Users, MapPin, Crown, DollarSign, Activity, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Town {
   name: string;
-  mayor: string;
-  nation: string;
-  residents: string[];
-  balance: number;
-  chunks: number;
-  location: {
+  mayor?: {
+    name: string;
+    uuid: string;
+  };
+  nation?: {
+    name: string;
+    uuid: string;
+  };
+  residents?: Array<{
+    name: string;
+    uuid: string;
+  }>;
+  stats?: {
+    balance: number;
+  };
+  chunks?: number;
+  location?: {
     x: number;
     z: number;
   };
+}
+
+interface OnlinePlayer {
+  name: string;
+  uuid: string;
 }
 
 interface ServerData {
@@ -31,30 +48,54 @@ interface ServerData {
 const ServerStatus = () => {
   const [serverData, setServerData] = useState<ServerData | null>(null);
   const [topTowns, setTopTowns] = useState<Town[]>([]);
+  const [onlinePlayers, setOnlinePlayers] = useState<OnlinePlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showOnlinePlayers, setShowOnlinePlayers] = useState(false);
 
   const fetchServerData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch server data from the correct endpoint
+      // Fetch server data
       const serverResponse = await fetch('https://api.earthmc.net/v3/aurora/');
       if (!serverResponse.ok) throw new Error('Failed to fetch server data');
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
-      // Fetch towns for top 10
+      // Fetch basic towns list
       const townsResponse = await fetch('https://api.earthmc.net/v3/aurora/towns');
       if (!townsResponse.ok) throw new Error('Failed to fetch towns data');
       const townsData = await townsResponse.json();
       
-      // Sort by balance and get top 10
-      const sortedTowns = townsData
-        .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
-        .slice(0, 10);
-      setTopTowns(sortedTowns);
+      // Get top 10 towns by fetching detailed data for first 50 towns
+      const topTownUuids = townsData.slice(0, 50).map((town: any) => town.uuid);
+      
+      const detailedTownsResponse = await fetch('https://api.earthmc.net/v3/aurora/towns', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: topTownUuids
+        })
+      });
+      
+      if (detailedTownsResponse.ok) {
+        const detailedTowns = await detailedTownsResponse.json();
+        const sortedTowns = detailedTowns
+          .sort((a: Town, b: Town) => (b.stats?.balance || 0) - (a.stats?.balance || 0))
+          .slice(0, 10);
+        setTopTowns(sortedTowns);
+      }
+
+      // Fetch online players
+      const playersResponse = await fetch('https://api.earthmc.net/v3/aurora/players');
+      if (playersResponse.ok) {
+        const playersData = await playersResponse.json();
+        setOnlinePlayers(playersData.slice(0, 100)); // Limit to first 100 for performance
+      }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -66,7 +107,6 @@ const ServerStatus = () => {
 
   useEffect(() => {
     fetchServerData();
-    // Refresh every 5 minutes
     const interval = setInterval(fetchServerData, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
@@ -132,6 +172,33 @@ const ServerStatus = () => {
               <div className="text-sm text-gray-400">Map</div>
             </div>
           </div>
+
+          {/* Online Players Section */}
+          {onlinePlayers.length > 0 && (
+            <div className="mt-6">
+              <Button
+                onClick={() => setShowOnlinePlayers(!showOnlinePlayers)}
+                variant="outline"
+                className="flex items-center space-x-2 mb-4"
+              >
+                <Users className="w-4 h-4" />
+                <span>Online Players ({onlinePlayers.length})</span>
+                {showOnlinePlayers ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </Button>
+              
+              {showOnlinePlayers && (
+                <div className="max-h-48 overflow-y-auto bg-gray-800/50 rounded-lg p-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {onlinePlayers.map(player => (
+                      <div key={player.uuid} className="text-sm text-gray-300 hover:text-white transition-colors">
+                        {player.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -172,13 +239,13 @@ const ServerStatus = () => {
                     <div>
                       <div className="font-semibold">{town.name}</div>
                       <div className="text-sm text-gray-400">
-                        Mayor: {town.mayor || 'Unknown'} • Nation: {town.nation || 'Unknown'}
+                        Mayor: {town.mayor?.name || 'Unknown'} • Nation: {town.nation?.name || 'None'}
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-bold text-green-400">
-                      ${(town.balance || 0).toLocaleString()}
+                      ${(town.stats?.balance || 0).toLocaleString()}
                     </div>
                     <div className="text-sm text-gray-400">
                       {(town.residents?.length || 0)} residents

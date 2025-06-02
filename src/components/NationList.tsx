@@ -2,25 +2,58 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Crown, MapPin, Users, DollarSign, AlertCircle } from 'lucide-react';
 
-interface Nation {
+interface BaseNation {
   name: string;
-  capital: string;
-  king: string;
-  towns: string[];
-  residents: string[];
-  balance: number;
-  color: string;
+  uuid: string;
+}
+
+interface DetailedNation {
+  name: string;
+  uuid: string;
+  board?: string;
+  dynmapColour?: string;
+  king?: {
+    name: string;
+    uuid: string;
+  };
+  capital?: {
+    name: string;
+    uuid: string;
+  };
+  towns?: Array<{
+    name: string;
+    uuid: string;
+  }>;
+  residents?: Array<{
+    name: string;
+    uuid: string;
+  }>;
+  stats?: {
+    balance: number;
+    numTowns: number;
+    numResidents: number;
+    numAllies: number;
+    numEnemies: number;
+  };
+  status?: {
+    isPublic: boolean;
+    isOpen: boolean;
+    isNeutral: boolean;
+  };
 }
 
 const NationList = () => {
-  const [nations, setNations] = useState<Nation[]>([]);
-  const [filteredNations, setFilteredNations] = useState<Nation[]>([]);
+  const [allNations, setAllNations] = useState<BaseNation[]>([]);
+  const [detailedNations, setDetailedNations] = useState<DetailedNation[]>([]);
+  const [filteredNations, setFilteredNations] = useState<DetailedNation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingDetails, setLoadingDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'balance' | 'towns' | 'residents'>('balance');
@@ -30,12 +63,16 @@ const NationList = () => {
       setLoading(true);
       setError(null);
 
+      // Fetch basic nations list
       const response = await fetch('https://api.earthmc.net/v3/aurora/nations');
       if (!response.ok) throw new Error('Failed to fetch nations data');
       
       const nationsData = await response.json();
-      setNations(nationsData);
-      setFilteredNations(nationsData);
+      setAllNations(nationsData);
+
+      // Automatically fetch detailed data for top 50 nations
+      await fetchDetailedNations(nationsData.slice(0, 50).map((nation: BaseNation) => nation.uuid));
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       console.error('Error fetching nations:', err);
@@ -44,48 +81,99 @@ const NationList = () => {
     }
   };
 
+  const fetchDetailedNations = async (nationUuids: string[]) => {
+    try {
+      setLoadingDetails(true);
+      
+      const response = await fetch('https://api.earthmc.net/v3/aurora/nations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: nationUuids
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch detailed nation data');
+      
+      const detailedData = await response.json();
+      setDetailedNations(detailedData);
+    } catch (err) {
+      console.error('Error fetching detailed nations:', err);
+      setDetailedNations([]);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const searchNations = async () => {
+    if (!searchTerm.trim()) {
+      setFilteredNations(detailedNations);
+      return;
+    }
+
+    try {
+      // Try to search by exact name first
+      const response = await fetch('https://api.earthmc.net/v3/aurora/nations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: [searchTerm.trim()]
+        })
+      });
+
+      if (response.ok) {
+        const searchResults = await response.json();
+        if (searchResults.length > 0) {
+          setFilteredNations(searchResults);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+    }
+
+    // Fallback to local filtering
+    const filtered = detailedNations.filter(nation => 
+      nation.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      nation.king?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      nation.capital?.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredNations(filtered);
+  };
+
   useEffect(() => {
     fetchNations();
   }, []);
 
   useEffect(() => {
-    let filtered = nations.filter(nation => {
-      const nationName = nation.name || '';
-      const nationKing = nation.king || '';
-      const nationCapital = nation.capital || '';
-      
-      return nationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             nationKing.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             nationCapital.toLowerCase().includes(searchTerm.toLowerCase());
-    });
+    if (detailedNations.length > 0) {
+      let filtered = searchTerm ? filteredNations : detailedNations;
 
-    // Sort nations
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return (a.name || '').localeCompare(b.name || '');
-        case 'balance':
-          return (b.balance || 0) - (a.balance || 0);
-        case 'towns':
-          return (b.towns?.length || 0) - (a.towns?.length || 0);
-        case 'residents':
-          return (b.residents?.length || 0) - (a.residents?.length || 0);
-        default:
-          return 0;
+      // Sort nations
+      filtered.sort((a, b) => {
+        switch (sortBy) {
+          case 'name':
+            return (a.name || '').localeCompare(b.name || '');
+          case 'balance':
+            return (b.stats?.balance || 0) - (a.stats?.balance || 0);
+          case 'towns':
+            return (b.stats?.numTowns || 0) - (a.stats?.numTowns || 0);
+          case 'residents':
+            return (b.stats?.numResidents || 0) - (a.stats?.numResidents || 0);
+          default:
+            return 0;
+        }
+      });
+
+      if (!searchTerm) {
+        setFilteredNations(filtered);
       }
-    });
-
-    setFilteredNations(filtered);
-  }, [nations, searchTerm, sortBy]);
-
-  const formatBalance = (balance: number | undefined | null): string => {
-    if (balance === undefined || balance === null) return '$0';
-    return `$${balance.toLocaleString()}`;
-  };
-
-  const getArrayLength = (arr: any[] | undefined | null): number => {
-    return arr?.length || 0;
-  };
+    }
+  }, [detailedNations, sortBy]);
 
   if (error) {
     return (
@@ -110,20 +198,28 @@ const NationList = () => {
             <span>Nations Browser</span>
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Explore all nations on EarthMC Aurora
+            Explore all nations on EarthMC Aurora (showing top 50 by default)
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search nations, kings, or capitals..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-gray-800/50 border-gray-600 text-white"
-              />
+          <div className="space-y-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search nations by name, king, or capital..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && searchNations()}
+                  className="pl-10 bg-gray-800/50 border-gray-600 text-white"
+                />
+              </div>
+              <Button onClick={searchNations} className="bg-green-600 hover:bg-green-700">
+                <Search className="w-4 h-4 mr-2" />
+                Search
+              </Button>
             </div>
+
             <Select value={sortBy} onValueChange={(value: 'name' | 'balance' | 'towns' | 'residents') => setSortBy(value)}>
               <SelectTrigger className="w-full md:w-48 bg-gray-800/50 border-gray-600 text-white">
                 <SelectValue placeholder="Sort by" />
@@ -135,16 +231,17 @@ const NationList = () => {
                 <SelectItem value="name">Name</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="mt-4 text-sm text-gray-400">
-            Showing {filteredNations.length} of {nations.length} nations
+
+            <div className="text-sm text-gray-400">
+              Showing {filteredNations.length} of {detailedNations.length} nations
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Nations Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {loading ? (
+        {loading || loadingDetails ? (
           Array.from({ length: 9 }).map((_, i) => (
             <Card key={i} className="bg-black/40 border-green-500/20">
               <CardContent className="p-4">
@@ -160,16 +257,16 @@ const NationList = () => {
           ))
         ) : (
           filteredNations.map(nation => (
-            <Card key={nation.name} className="bg-black/40 border-green-500/20 text-white hover:bg-black/60 transition-colors">
+            <Card key={nation.uuid} className="bg-black/40 border-green-500/20 text-white hover:bg-black/60 transition-colors">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <h3 className="font-bold text-purple-400 text-lg mb-1">{nation.name}</h3>
-                    {nation.color && (
+                    {nation.dynmapColour && (
                       <div className="flex items-center space-x-2 mb-2">
                         <div 
                           className="w-3 h-3 rounded-full border border-gray-500"
-                          style={{ backgroundColor: nation.color }}
+                          style={{ backgroundColor: `#${nation.dynmapColour}` }}
                         />
                         <span className="text-xs text-gray-400">Nation Color</span>
                       </div>
@@ -177,7 +274,7 @@ const NationList = () => {
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-semibold text-green-400">
-                      {formatBalance(nation.balance)}
+                      ${(nation.stats?.balance || 0).toLocaleString()}
                     </div>
                   </div>
                 </div>
@@ -188,28 +285,28 @@ const NationList = () => {
                       <Crown className="w-3 h-3" />
                       <span>King</span>
                     </span>
-                    <span>{nation.king}</span>
+                    <span>{nation.king?.name || 'Unknown'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 flex items-center space-x-1">
                       <MapPin className="w-3 h-3" />
                       <span>Capital</span>
                     </span>
-                    <span>{nation.capital}</span>
+                    <span>{nation.capital?.name || 'None'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 flex items-center space-x-1">
                       <MapPin className="w-3 h-3" />
                       <span>Towns</span>
                     </span>
-                    <span>{getArrayLength(nation.towns)}</span>
+                    <span>{nation.stats?.numTowns || 0}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 flex items-center space-x-1">
                       <Users className="w-3 h-3" />
                       <span>Residents</span>
                     </span>
-                    <span>{getArrayLength(nation.residents)}</span>
+                    <span>{nation.stats?.numResidents || 0}</span>
                   </div>
                 </div>
 
@@ -219,8 +316,8 @@ const NationList = () => {
                     <div className="text-xs text-gray-400 mb-1">Towns:</div>
                     <div className="flex flex-wrap gap-1">
                       {nation.towns.slice(0, 3).map(town => (
-                        <Badge key={town} variant="outline" className="text-xs border-gray-600 text-gray-300">
-                          {town}
+                        <Badge key={town.uuid} variant="outline" className="text-xs border-gray-600 text-gray-300">
+                          {town.name}
                         </Badge>
                       ))}
                       {nation.towns.length > 3 && (
@@ -237,7 +334,7 @@ const NationList = () => {
         )}
       </div>
 
-      {!loading && filteredNations.length === 0 && (
+      {!loading && !loadingDetails && filteredNations.length === 0 && (
         <Card className="bg-black/40 border-gray-500/20 text-white">
           <CardContent className="p-8 text-center">
             <Crown className="w-12 h-12 text-gray-400 mx-auto mb-4" />

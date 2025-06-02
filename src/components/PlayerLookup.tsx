@@ -58,8 +58,10 @@ const PlayerLookup = () => {
       setLoading(true);
       setError(null);
       setHasSearched(true);
+      setPlayerData(null);
 
-      // Use POST request to get detailed player data
+      console.log('Searching for player:', searchTerm.trim());
+
       const response = await fetch('https://api.earthmc.net/v3/aurora/players', {
         method: 'POST',
         headers: {
@@ -70,9 +72,17 @@ const PlayerLookup = () => {
         })
       });
 
-      if (!response.ok) throw new Error('Failed to fetch player data');
+      console.log('Response status:', response.status);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Player not found');
+        }
+        throw new Error(`API request failed with status ${response.status}`);
+      }
       
       const playersData = await response.json();
+      console.log('Response data:', playersData);
       
       if (!playersData || playersData.length === 0) {
         throw new Error('Player not found');
@@ -80,7 +90,12 @@ const PlayerLookup = () => {
 
       setPlayerData(playersData[0]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Player not found');
+      console.error('Player search error:', err);
+      if (err instanceof TypeError && err.message === 'Failed to fetch') {
+        setError('Network error - please check your connection and try again');
+      } else {
+        setError(err instanceof Error ? err.message : 'Player not found');
+      }
       setPlayerData(null);
     } finally {
       setLoading(false);
@@ -114,7 +129,7 @@ const PlayerLookup = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Enter player username or UUID..."
+                placeholder="Enter player username..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 bg-gray-800/50 border-gray-600 text-white"
@@ -268,7 +283,7 @@ const PlayerLookup = () => {
         </CardHeader>
         <CardContent>
           <div className="text-sm text-gray-400 space-y-2">
-            <p>• Enter any Minecraft username or UUID to search</p>
+            <p>• Enter any Minecraft username to search</p>
             <p>• View detailed player information including town, nation, and ranks</p>
             <p>• See player balance, friends, and activity timeline</p>
             <p>• Data is fetched in real-time from the EarthMC API</p>
