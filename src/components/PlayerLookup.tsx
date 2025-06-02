@@ -8,21 +8,27 @@ import { Search, User, MapPin, Crown, Users, AlertCircle, Loader2, DollarSign, C
 // Add custom scrollbar styles
 const customScrollbarStyles = `
   .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
   }
   
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(55, 65, 81, 0.3);
-    border-radius: 3px;
+    background: rgba(31, 41, 55, 0.5);
+    border-radius: 4px;
+    margin: 8px 0;
   }
   
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(156, 163, 175, 0.5);
-    border-radius: 3px;
+    background: linear-gradient(to bottom, rgba(251, 191, 36, 0.6), rgba(245, 158, 11, 0.6));
+    border-radius: 4px;
+    border: 1px solid rgba(31, 41, 55, 0.5);
   }
   
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(156, 163, 175, 0.8);
+    background: linear-gradient(to bottom, rgba(251, 191, 36, 0.8), rgba(245, 158, 11, 0.8));
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
   }
 `;
 
@@ -313,78 +319,110 @@ const PlayerLookup = () => {
                         <div className="text-lg font-bold text-yellow-400">{(playerData.stats?.balance || 0).toLocaleString()} Gold</div>
                       </div>
 
-                      <div className="p-4 bg-gray-800/50 rounded-lg relative group">
+                      {/* Enhanced Friends Section with proper hover */}
+                      <div className="p-4 bg-gray-800/50 rounded-lg relative">
                         <div className="flex items-center space-x-2 mb-2">
                           <Users className="w-4 h-4 text-yellow-400" />
                           <span className="text-sm font-semibold text-yellow-400">Friends</span>
                         </div>
-                        <div className="text-lg font-bold">{playerData.stats?.numFriends || 0}</div>
                         
-                        {/* Enhanced Friends hover tooltip */}
-                        {playerData.friends && playerData.friends.length > 0 && (
-                          <div className="absolute bottom-full left-0 mb-2 w-72 p-0 bg-gray-900/95 backdrop-blur-sm border border-gray-600/50 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 z-20 pointer-events-none group-hover:pointer-events-auto">
-                            {/* Header */}
-                            <div className="px-4 py-3 border-b border-gray-700/50 bg-gradient-to-r from-yellow-600/20 to-yellow-500/20 rounded-t-xl">
-                              <div className="flex items-center space-x-2">
-                                <Users className="w-4 h-4 text-yellow-400" />
-                                <span className="text-sm font-semibold text-yellow-400">Friends List</span>
-                                <span className="text-xs text-gray-400">({playerData.friends.length})</span>
-                              </div>
-                            </div>
-                            
-                            {/* Friends List */}
-                            <div className="max-h-64 overflow-y-auto p-2 custom-scrollbar">
-                              <div className="space-y-1">
-                                {playerData.friends.map((friend, index) => (
-                                  <div 
-                                    key={friend.uuid} 
-                                    className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-800/50 transition-colors duration-200 group/friend"
-                                  >
-                                    <div className="relative">
-                                      <img
-                                        src={getMinecraftHeadUrl(friend.name)}
-                                        alt={friend.name}
-                                        className="w-8 h-8 rounded-md border border-gray-600 group-hover/friend:border-yellow-400/50 transition-colors"
-                                        onError={(e) => {
-                                          e.currentTarget.style.display = 'none';
-                                          e.currentTarget.nextElementSibling!.style.display = 'flex';
-                                        }}
-                                      />
-                                      <div className="w-8 h-8 rounded-md bg-gray-700 border border-gray-600 items-center justify-center hidden">
-                                        <User className="w-4 h-4 text-gray-400" />
+                        {/* Friends count with hover trigger */}
+                        <div 
+                          className="text-lg font-bold cursor-pointer hover:text-yellow-400 transition-colors relative group"
+                          style={{ zIndex: 1 }}
+                        >
+                          {playerData.stats?.numFriends || 0}
+                          
+                          {/* Beautiful Friends Tooltip */}
+                          {playerData.friends && playerData.friends.length > 0 && (
+                            <div className="absolute bottom-full left-0 mb-3 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto" style={{ zIndex: 50 }}>
+                              {/* Hover bridge - invisible area to maintain hover */}
+                              <div className="absolute top-full w-full h-3"></div>
+                              
+                              <div className="w-80 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-yellow-400/30 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-lg">
+                                {/* Header */}
+                                <div className="px-5 py-4 bg-gradient-to-r from-yellow-500/20 via-yellow-400/20 to-amber-500/20 border-b border-yellow-400/20">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3">
+                                      <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-lg flex items-center justify-center">
+                                        <Users className="w-4 h-4 text-gray-900" />
                                       </div>
-                                      {/* Online indicator placeholder */}
-                                      <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-gray-600 rounded-full border-2 border-gray-900"></div>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-200 group-hover/friend:text-white transition-colors truncate">
-                                        {friend.name}
+                                      <div>
+                                        <h4 className="text-sm font-bold text-yellow-400">Friends List</h4>
+                                        <p className="text-xs text-gray-400">{playerData.friends.length} total friends</p>
                                       </div>
-                                      <div className="text-xs text-gray-500 truncate">
-                                        {friend.uuid.split('-')[0]}...
-                                      </div>
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      #{index + 1}
                                     </div>
                                   </div>
-                                ))}
+                                </div>
+                                
+                                {/* Friends List Container */}
+                                <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                                  <div className="p-2">
+                                    {playerData.friends.map((friend, index) => (
+                                      <div 
+                                        key={friend.uuid} 
+                                        className="flex items-center space-x-3 p-3 rounded-xl hover:bg-gradient-to-r hover:from-yellow-500/10 hover:to-amber-500/10 transition-all duration-200 group/friend border border-transparent hover:border-yellow-400/20"
+                                      >
+                                        {/* Friend Avatar */}
+                                        <div className="relative flex-shrink-0">
+                                          <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-700 border-2 border-gray-600 group-hover/friend:border-yellow-400/50 transition-all duration-200 shadow-lg">
+                                            <img
+                                              src={getMinecraftHeadUrl(friend.name)}
+                                              alt={friend.name}
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => {
+                                                e.currentTarget.style.display = 'none';
+                                                e.currentTarget.nextElementSibling!.style.display = 'flex';
+                                              }}
+                                            />
+                                            <div className="w-full h-full bg-gray-700 items-center justify-center hidden">
+                                              <User className="w-5 h-5 text-gray-400" />
+                                            </div>
+                                          </div>
+                                          
+                                          {/* Status indicator */}
+                                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-gray-500 rounded-full border-2 border-gray-900 shadow-sm">
+                                            <div className="w-full h-full rounded-full bg-gradient-to-br from-gray-400 to-gray-600"></div>
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Friend Info */}
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center space-x-2">
+                                            <h5 className="text-sm font-semibold text-white group-hover/friend:text-yellow-400 transition-colors truncate">
+                                              {friend.name}
+                                            </h5>
+                                          </div>
+                                          <div className="flex items-center space-x-2 mt-1">
+                                            <span className="text-xs text-gray-500 font-mono">
+                                              {friend.uuid.split('-')[0]}...
+                                            </span>
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Friend Number */}
+                                        <div className="text-xs font-medium text-gray-500 bg-gray-700/50 px-2 py-1 rounded-md">
+                                          #{index + 1}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                
+                                {/* Footer */}
+                                <div className="px-5 py-3 bg-gradient-to-r from-gray-800/80 to-gray-700/80 border-t border-gray-600/30">
+                                  <div className="flex items-center justify-between text-xs text-gray-400">
+                                    <span>Scroll to view all friends</span>
+                                    <span className="text-yellow-400">●</span>
+                                  </div>
+                                </div>
+                                
+                                {/* Arrow pointer */}
+                                <div className="absolute top-full left-8 w-0 h-0 border-l-[12px] border-r-[12px] border-t-[12px] border-l-transparent border-r-transparent border-t-yellow-400/30"></div>
                               </div>
                             </div>
-                            
-                            {/* Footer */}
-                            {playerData.friends.length > 5 && (
-                              <div className="px-4 py-2 border-t border-gray-700/50 bg-gray-800/30 rounded-b-xl">
-                                <div className="text-xs text-gray-400 text-center">
-                                  Scroll to see all {playerData.friends.length} friends
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Arrow pointer */}
-                            <div className="absolute top-full left-6 w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-gray-600/50"></div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
