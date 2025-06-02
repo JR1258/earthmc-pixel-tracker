@@ -49,17 +49,21 @@ const NationList = () => {
   }, []);
 
   useEffect(() => {
-    let filtered = nations.filter(nation => 
-      nation.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      nation.king.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      nation.capital.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    let filtered = nations.filter(nation => {
+      const nationName = nation.name || '';
+      const nationKing = nation.king || '';
+      const nationCapital = nation.capital || '';
+      
+      return nationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             nationKing.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             nationCapital.toLowerCase().includes(searchTerm.toLowerCase());
+    });
 
     // Sort nations
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'name':
-          return a.name.localeCompare(b.name);
+          return (a.name || '').localeCompare(b.name || '');
         case 'balance':
           return (b.balance || 0) - (a.balance || 0);
         case 'towns':
