@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -70,15 +69,26 @@ const PlayerLookup = () => {
         })
       });
 
-      if (!response.ok) throw new Error('Failed to fetch player data');
+      if (!response.ok) {
+        throw new Error('Failed to fetch player data');
+      }
       
       const playersData = await response.json();
       
-      if (!playersData || playersData.length === 0) {
+      // The API returns an object with player names/UUIDs as keys
+      const playerKeys = Object.keys(playersData);
+      if (playerKeys.length === 0) {
         throw new Error('Player not found');
       }
 
-      setPlayerData(playersData[0]);
+      const playerKey = playerKeys[0];
+      const player = playersData[playerKey];
+      
+      if (!player || player.error) {
+        throw new Error('Player not found');
+      }
+
+      setPlayerData(player);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Player not found');
       setPlayerData(null);
@@ -192,7 +202,7 @@ const PlayerLookup = () => {
                           <span className="text-sm font-semibold text-blue-400">Town</span>
                         </div>
                         <div className="text-lg font-bold">{playerData.town.name}</div>
-                        {playerData.ranks.townRanks.length > 0 && (
+                        {playerData.ranks.townRanks && playerData.ranks.townRanks.length > 0 && (
                           <div className="text-sm text-gray-400">
                             Ranks: {playerData.ranks.townRanks.join(', ')}
                           </div>
@@ -207,7 +217,7 @@ const PlayerLookup = () => {
                           <span className="text-sm font-semibold text-purple-400">Nation</span>
                         </div>
                         <div className="text-lg font-bold">{playerData.nation.name}</div>
-                        {playerData.ranks.nationRanks.length > 0 && (
+                        {playerData.ranks.nationRanks && playerData.ranks.nationRanks.length > 0 && (
                           <div className="text-sm text-gray-400">
                             Ranks: {playerData.ranks.nationRanks.join(', ')}
                           </div>
@@ -222,7 +232,7 @@ const PlayerLookup = () => {
                         <DollarSign className="w-4 h-4 text-green-400" />
                         <span className="text-sm font-semibold text-green-400">Balance</span>
                       </div>
-                      <div className="text-lg font-bold">${playerData.stats.balance.toLocaleString()}</div>
+                      <div className="text-lg font-bold">${(playerData.stats.balance || 0).toLocaleString()}</div>
                     </div>
 
                     <div className="p-4 bg-gray-800/50 rounded-lg">
@@ -230,7 +240,7 @@ const PlayerLookup = () => {
                         <Users className="w-4 h-4 text-yellow-400" />
                         <span className="text-sm font-semibold text-yellow-400">Friends</span>
                       </div>
-                      <div className="text-lg font-bold">{playerData.stats.numFriends}</div>
+                      <div className="text-lg font-bold">{playerData.stats.numFriends || 0}</div>
                     </div>
                   </div>
                 </div>
