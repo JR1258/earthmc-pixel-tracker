@@ -1,16 +1,33 @@
 name: Update EarthMC Stats Daily
+
+# Testing mode toggle - change this to enable/disable frequent updates
+env:
+  TESTING_MODE: true  # Set to true for 2-minute updates, false for daily
+
 on:
   schedule:
-    - cron: '*/2 * * * *'  # Run every 2 minutes (for testing)
-  workflow_dispatch:      # Allow manual runs from GitHub UI
+    # When TESTING_MODE is true: every 2 minutes
+    # When TESTING_MODE is false: daily at 12:00 UTC
+    - cron: '*/2 * * * *'   # This will be controlled by the job condition
+  workflow_dispatch:        # Allow manual runs from GitHub UI
 
 jobs:
   update-stats:
     runs-on: ubuntu-latest
+    # Only run if TESTING_MODE is true OR if it's a manual trigger OR if it's the daily time
+    if: env.TESTING_MODE == 'true' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
     
     steps:
+      - name: Check Testing Mode
+        run: |
+          if [ "${{ env.TESTING_MODE }}" == "true" ]; then
+            echo "🧪 TESTING MODE: Running frequent updates (every 2 minutes)"
+          else
+            echo "📅 PRODUCTION MODE: Running daily updates"
+          fi
+
       - name: Fetch EarthMC Server Data
         id: fetch-data
         run: |
@@ -40,7 +57,18 @@ jobs:
           TOWNS=$(echo "$SERVER_DATA" | jq -r '.stats.numTowns // 0')
           NATIONS=$(echo "$SERVER_DATA" | jq -r '.stats.numNations // 0')
           ONLINE=$(echo "$SERVER_DATA" | jq -r '.stats.numOnlinePlayers // 0')
-          TODAY=$(date -u +%Y-%m-%d)
+          
+          # In testing mode, create data for different days to build history faster
+          if [ "${{ env.TESTING_MODE }}" == "true" ]; then
+            # Generate a date within the last 7 days for testing
+            DAYS_BACK=$((RANDOM % 7))
+            TODAY=$(date -u -d "-${DAYS_BACK} days" +%Y-%m-%d)
+            echo "🧪 Testing mode: Using date $TODAY (${DAYS_BACK} days back)"
+          else
+            TODAY=$(date -u +%Y-%m-%d)
+            echo "📅 Production mode: Using today's date $TODAY"
+          fi
+          
           TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           
           echo "Extracted data:"
@@ -97,10 +125,10 @@ jobs:
             # Update lastUpdated timestamp
             .lastUpdated = $timestamp |
             
-            # Remove any existing entry for today (to avoid duplicates)
+            # Remove any existing entry for this date (to avoid duplicates)
             .stats = (.stats // [] | map(select(.date != $date))) |
             
-            # Add new entry for today
+            # Add new entry for this date
             .stats += [{
               date: $date,
               residents: ($residents | tonumber),
@@ -148,6 +176,10 @@ jobs:
             echo "🏘️ Towns: ${{ steps.fetch-data.outputs.towns }}"
             echo "🏛️ Nations: ${{ steps.fetch-data.outputs.nations }}"
             echo "🟢 Online: ${{ steps.fetch-data.outputs.online }}"
+            
+            if [ "${{ env.TESTING_MODE }}" == "true" ]; then
+              echo "🧪 Testing mode active - next run in 2 minutes"
+            fi
           else
             echo "❌ Failed to update gist"
             exit 1
