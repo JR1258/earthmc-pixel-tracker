@@ -1,0 +1,159 @@
+name: Update EarthMC Stats Daily
+on:
+  schedule:
+    - cron: '0 12 * * *'  # Run daily at 12:00 UTC (8am EST)
+  workflow_dispatch:      # Allow manual runs from GitHub UI
+
+jobs:
+  update-stats:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Fetch EarthMC Server Data
+        id: fetch-data
+        run: |
+          echo "Fetching EarthMC data..."
+          
+          # Fetch server data with retry logic
+          for i in {1..3}; do
+            SERVER_DATA=$(curl -s --max-time 30 "https://api.earthmc.net/v3/aurora/")
+            if [ $? -eq 0 ] && [ ! -z "$SERVER_DATA" ]; then
+              break
+            fi
+            echo "Retry $i failed, waiting 10 seconds..."
+            sleep 10
+          done
+          
+          # Check if we got valid data
+          if [ -z "$SERVER_DATA" ]; then
+            echo "Failed to fetch server data after retries"
+            exit 1
+          fi
+          
+          echo "Server data fetched successfully"
+          echo "$SERVER_DATA" | jq '.'
+          
+          # Extract values using jq
+          RESIDENTS=$(echo "$SERVER_DATA" | jq -r '.stats.numResidents // 0')
+          TOWNS=$(echo "$SERVER_DATA" | jq -r '.stats.numTowns // 0')
+          NATIONS=$(echo "$SERVER_DATA" | jq -r '.stats.numNations // 0')
+          ONLINE=$(echo "$SERVER_DATA" | jq -r '.stats.numOnlinePlayers // 0')
+          TODAY=$(date -u +%Y-%m-%d)
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          
+          echo "Extracted data:"
+          echo "Date: $TODAY"
+          echo "Residents: $RESIDENTS"
+          echo "Towns: $TOWNS"
+          echo "Nations: $NATIONS"
+          echo "Online: $ONLINE"
+          
+          # Set outputs for next step
+          echo "residents=$RESIDENTS" >> $GITHUB_OUTPUT
+          echo "towns=$TOWNS" >> $GITHUB_OUTPUT
+          echo "nations=$NATIONS" >> $GITHUB_OUTPUT
+          echo "online=$ONLINE" >> $GITHUB_OUTPUT
+          echo "date=$TODAY" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+
+      - name: Download Current Gist Data
+        id: download-gist
+        run: |
+          echo "Downloading current gist data..."
+          
+          # Download current gist with retry
+          for i in {1..3}; do
+            curl -s --max-time 30 "https://gist.githubusercontent.com/JR1258/afd29d02bf92e7e62b4790eef9cd12d7/raw/earthmc-stats.json" > current.json
+            if [ $? -eq 0 ] && [ -s current.json ]; then
+              break
+            fi
+            echo "Download retry $i failed, waiting 5 seconds..."
+            sleep 5
+          done
+          
+          # Check if download was successful
+          if [ ! -s current.json ]; then
+            echo "Failed to download gist, creating new structure..."
+            echo '{"lastUpdated":"","stats":[]}' > current.json
+          fi
+          
+          echo "Current gist content:"
+          cat current.json | jq '.'
+
+      - name: Update Stats Data
+        id: update-data
+        run: |
+          echo "Updating stats data..."
+          
+          # Create updated JSON with new stats
+          jq --arg date "${{ steps.fetch-data.outputs.date }}" \
+             --arg residents "${{ steps.fetch-data.outputs.residents }}" \
+             --arg towns "${{ steps.fetch-data.outputs.towns }}" \
+             --arg nations "${{ steps.fetch-data.outputs.nations }}" \
+             --arg online "${{ steps.fetch-data.outputs.online }}" \
+             --arg timestamp "${{ steps.fetch-data.outputs.timestamp }}" '
+            # Update lastUpdated timestamp
+            .lastUpdated = $timestamp |
+            
+            # Remove any existing entry for today (to avoid duplicates)
+            .stats = (.stats // [] | map(select(.date != $date))) |
+            
+            # Add new entry for today
+            .stats += [{
+              date: $date,
+              residents: ($residents | tonumber),
+              towns: ($towns | tonumber),
+              nations: ($nations | tonumber),
+              onlinePlayers: ($online | tonumber)
+            }] |
+            
+            # Sort by date and keep only last 30 days
+            .stats = (.stats | sort_by(.date) | .[-30:])
+          ' current.json > updated.json
+          
+          echo "Updated stats:"
+          cat updated.json | jq '.'
+          
+          # Validate the JSON
+          if ! jq empty updated.json 2>/dev/null; then
+            echo "Generated invalid JSON!"
+            exit 1
+          fi
+          
+          echo "JSON validation passed"
+
+      - name: Update GitHub Gist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Updating GitHub Gist..."
+          
+          # Prepare the JSON content for the API call
+          CONTENT=$(cat updated.json | jq -c .)
+          
+          # Update the gist
+          curl -X PATCH \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            -d "{\"files\":{\"earthmc-stats.json\":{\"content\":\"$CONTENT\"}}}" \
+            "https://api.github.com/gists/afd29d02bf92e7e62b4790eef9cd12d7"
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Gist updated successfully!"
+            echo "📊 Added data for ${{ steps.fetch-data.outputs.date }}"
+            echo "👥 Residents: ${{ steps.fetch-data.outputs.residents }}"
+            echo "🏘️ Towns: ${{ steps.fetch-data.outputs.towns }}"
+            echo "🏛️ Nations: ${{ steps.fetch-data.outputs.nations }}"
+            echo "🟢 Online: ${{ steps.fetch-data.outputs.online }}"
+          else
+            echo "❌ Failed to update gist"
+            exit 1
+          fi
+
+      - name: Cleanup
+        run: |
+          rm -f current.json updated.json
+          echo "Cleanup completed"
