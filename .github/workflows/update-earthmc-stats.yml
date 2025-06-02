@@ -2,7 +2,7 @@ name: Update EarthMC Stats Daily
 
 on:
   schedule:
-    - cron: '*/2 * * * *'   # Every 2 minutes for testing
+    - cron: '0 12 * * *'   # Daily at 12:00 UTC
   workflow_dispatch:        # Allow manual runs from GitHub UI
 
 jobs:
@@ -49,7 +49,7 @@ jobs:
           
           # Generate a date within the last 7 days for testing (to build history faster)
           DAYS_BACK=$((RANDOM % 7))
-          TODAY=$(date -u -d "-${DAYS_BACK} days" +%Y-%m-%d)
+          TODAY=$(date -u +%Y-%m-%d)  # Always use today
           echo "🧪 Testing mode: Using date $TODAY (${DAYS_BACK} days back)"
           
           TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
