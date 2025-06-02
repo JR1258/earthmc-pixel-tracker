@@ -70,7 +70,7 @@ const TownBrowser = () => {
         case 'name':
           return a.name.localeCompare(b.name);
         case 'balance':
-          return b.balance - a.balance;
+          return (b.balance || 0) - (a.balance || 0);
         case 'residents':
           return b.residents.length - a.residents.length;
         default:
@@ -82,6 +82,11 @@ const TownBrowser = () => {
   }, [towns, searchTerm, sortBy, selectedNation]);
 
   const uniqueNations = Array.from(new Set(towns.map(town => town.nation))).sort();
+
+  const formatBalance = (balance: number | undefined | null): string => {
+    if (balance === undefined || balance === null) return '$0';
+    return `$${balance.toLocaleString()}`;
+  };
 
   if (error) {
     return (
@@ -177,7 +182,7 @@ const TownBrowser = () => {
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-semibold text-green-400">
-                      ${town.balance.toLocaleString()}
+                      {formatBalance(town.balance)}
                     </div>
                   </div>
                 </div>
