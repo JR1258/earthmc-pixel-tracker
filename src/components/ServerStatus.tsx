@@ -103,8 +103,13 @@ const ServerStatus = () => {
 
   const getServerTimezone = () => {
     const now = new Date();
-    const estOffset = now.getTimezoneOffset() + 300; // EST is UTC-5
-    return estOffset === 0 ? 'EST' : 'EDT';
+    const formatter = new Intl.DateTimeFormat('en', {
+      timeZone: 'America/New_York',
+      timeZoneName: 'short'
+    });
+    const parts = formatter.formatToParts(now);
+    const timeZone = parts.find(part => part.type === 'timeZoneName');
+    return timeZone ? timeZone.value : 'EST';
   };
 
   const getMinecraftTimeOfDay = () => {
@@ -194,74 +199,93 @@ const ServerStatus = () => {
           </Card>
         </div>
 
-        {/* Enhanced Quick Stats Card */}
+        {/* Enhanced Quick Stats Card - Beautiful Design */}
         <div className="lg:col-span-1">
-          <Card className="bg-black/40 border-green-500/20 text-white h-full">
-            <CardHeader>
-              <CardTitle className="text-green-400">Quick Stats</CardTitle>
+          <Card className="bg-gradient-to-br from-gray-900 via-black/40 to-gray-800 border-green-500/30 text-white h-full shadow-2xl backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-green-400 text-lg font-bold">Quick Stats</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <Server className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-400">Server</span>
+            <CardContent className="space-y-3">
+              {/* Server */}
+              <div className="flex justify-between items-center p-3 bg-gradient-to-r from-gray-800/60 to-gray-700/40 rounded-xl border border-gray-600/30 hover:border-green-500/30 transition-all duration-200">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                    <Server className="w-4 h-4 text-white" />
                   </div>
-                  <span className="font-semibold">EarthMC</span>
+                  <span className="text-gray-300 font-medium">Server</span>
                 </div>
-                
-                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <Activity className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-400">Version</span>
+                <span className="font-bold text-white">EarthMC</span>
+              </div>
+              
+              {/* Version */}
+              <div className="flex justify-between items-center p-3 bg-gradient-to-r from-gray-800/60 to-gray-700/40 rounded-xl border border-gray-600/30 hover:border-green-500/30 transition-all duration-200">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
+                    <Activity className="w-4 h-4 text-white" />
                   </div>
-                  <span className="font-semibold">
-                    {loading ? <Skeleton className="h-5 w-16" /> : serverData?.version || 'Unknown'}
-                  </span>
+                  <span className="text-gray-300 font-medium">Version</span>
                 </div>
-                
-                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <Globe className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-400">Map</span>
+                <span className="font-bold text-white">
+                  {loading ? <Skeleton className="h-5 w-16" /> : serverData?.version || 'Unknown'}
+                </span>
+              </div>
+              
+              {/* Map */}
+              <div className="flex justify-between items-center p-3 bg-gradient-to-r from-gray-800/60 to-gray-700/40 rounded-xl border border-gray-600/30 hover:border-green-500/30 transition-all duration-200">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                    <Globe className="w-4 h-4 text-white" />
                   </div>
-                  <span className="font-semibold">Aurora</span>
+                  <span className="text-gray-300 font-medium">Map</span>
                 </div>
-                
-                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <Clock className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-400">Server Time</span>
+                <span className="font-bold text-white">Aurora</span>
+              </div>
+              
+              {/* Server Time */}
+              <div className="flex justify-between items-center p-3 bg-gradient-to-r from-gray-800/60 to-gray-700/40 rounded-xl border border-gray-600/30 hover:border-green-500/30 transition-all duration-200">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center">
+                    <Clock className="w-4 h-4 text-white" />
                   </div>
-                  <div className="text-right">
-                    <div className="font-semibold text-sm">{formatServerTime()}</div>
-                    <div className="text-xs text-gray-500">{getServerTimezone()}</div>
-                  </div>
+                  <span className="text-gray-300 font-medium">Server Time</span>
                 </div>
-                
-                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-lg">{getMinecraftTimeOfDay().icon}</span>
-                    <span className="text-gray-400">MC Time</span>
-                  </div>
-                  <span className="font-semibold">{getMinecraftTimeOfDay().period}</span>
+                <div className="text-right">
+                  <div className="font-bold text-white text-sm">{formatServerTime()}</div>
+                  <div className="text-xs text-gray-400">{getServerTimezone()}</div>
                 </div>
-                
-                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <Cloud className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-400">Weather</span>
+              </div>
+              
+              {/* MC Time */}
+              <div className="flex justify-between items-center p-3 bg-gradient-to-r from-gray-800/60 to-gray-700/40 rounded-xl border border-gray-600/30 hover:border-green-500/30 transition-all duration-200">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                    <span className="text-sm">{getMinecraftTimeOfDay().icon}</span>
                   </div>
-                  <span className="font-semibold">Clear ☀️</span>
+                  <span className="text-gray-300 font-medium">MC Time</span>
                 </div>
-                
-                <div className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <Activity className="w-4 h-4 text-green-400" />
-                    <span className="text-gray-400">Uptime</span>
+                <span className="font-bold text-white">{getMinecraftTimeOfDay().period}</span>
+              </div>
+              
+              {/* Weather */}
+              <div className="flex justify-between items-center p-3 bg-gradient-to-r from-gray-800/60 to-gray-700/40 rounded-xl border border-gray-600/30 hover:border-green-500/30 transition-all duration-200">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-sky-500 to-sky-600 rounded-lg flex items-center justify-center">
+                    <Cloud className="w-4 h-4 text-white" />
                   </div>
-                  <span className="font-semibold text-green-400">{getUptime()}</span>
+                  <span className="text-gray-300 font-medium">Weather</span>
                 </div>
+                <span className="font-bold text-white">Clear ☀️</span>
+              </div>
+              
+              {/* Uptime */}
+              <div className="flex justify-between items-center p-3 bg-gradient-to-r from-gray-800/60 to-gray-700/40 rounded-xl border border-gray-600/30 hover:border-green-500/30 transition-all duration-200">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
+                    <Activity className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="text-gray-300 font-medium">Uptime</span>
+                </div>
+                <span className="font-bold text-green-400">{getUptime()}</span>
               </div>
             </CardContent>
           </Card>
