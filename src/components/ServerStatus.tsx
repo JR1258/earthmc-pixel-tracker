@@ -59,91 +59,6 @@ const ServerStatus = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
 
-  // Pagination helper functions - MOVED BEFORE USE
-  const getPaginatedData = (data: Player[], currentPage: number) => {
-    const startIndex = (currentPage - 1) * PLAYERS_PER_PAGE;
-    const endIndex = startIndex + PLAYERS_PER_PAGE;
-    return data.slice(startIndex, endIndex);
-  };
-
-  const getTotalPages = (totalItems: number) => {
-    return Math.ceil(totalItems / PLAYERS_PER_PAGE);
-  };
-
-  const PaginationControls = ({ 
-    currentPage, 
-    totalPages, 
-    onPageChange, 
-    totalItems, 
-    itemType 
-  }: {
-    currentPage: number;
-    totalPages: number;
-    onPageChange: (page: number) => void;
-    totalItems: number;
-    itemType: string;
-  }) => {
-    if (totalPages <= 1) return null;
-
-    const startItem = (currentPage - 1) * PLAYERS_PER_PAGE + 1;
-    const endItem = Math.min(currentPage * PLAYERS_PER_PAGE, totalItems);
-
-    return (
-      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-700/50">
-        <div className="text-xs text-gray-400">
-          Showing {startItem}-{endItem} of {totalItems} {itemType}
-        </div>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
-          >
-            Previous
-          </button>
-          
-          {/* Page numbers */}
-          <div className="flex items-center space-x-1">
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              let pageNum;
-              if (totalPages <= 5) {
-                pageNum = i + 1;
-              } else if (currentPage <= 3) {
-                pageNum = i + 1;
-              } else if (currentPage >= totalPages - 2) {
-                pageNum = totalPages - 4 + i;
-              } else {
-                pageNum = currentPage - 2 + i;
-              }
-
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => onPageChange(pageNum)}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${
-                    currentPage === pageNum
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                  }`}
-                >
-                  {pageNum}
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
-          >
-            Next
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   const loadHistoricalData = async () => {
     try {
       const last7Days = await getLast7Days();
@@ -184,7 +99,7 @@ const ServerStatus = () => {
     });
     
     if (saved) {
-      loadHistoricalData(); // Refresh the chart data
+      loadHistoricalData();
     }
   };
 
@@ -192,33 +107,15 @@ const ServerStatus = () => {
   const loadStaffList = async () => {
     try {
       const response = await fetch('https://raw.githubusercontent.com/jwkerr/staff/master/staff.json');
-      if (response.ok) {
-        const staffData = await response.json();
-        console.log('Loaded staff list:', staffData);
-        setStaffList(staffData);
-      } else {
-        console.warn('Could not load staff list, using fallback');
-        // Fallback staff list if the GitHub repo is unavailable
-        setStaffList([
-          { name: 'fix', rank: 'Owner' },
-          { name: 'KarlOfDuty', rank: 'Admin' },
-          { name: 'Seranis', rank: 'Admin' },
-          { name: '32Oreo', rank: 'Moderator' },
-          { name: 'ElectricBird', rank: 'Moderator' },
-          { name: 'Fruitloopins', rank: 'Moderator' },
-        ]);
+      if (!response.ok) {
+        throw new Error('Failed to load staff list');
       }
+      const staffData = await response.json();
+      console.log('Loaded staff list:', staffData);
+      setStaffList(staffData);
     } catch (error) {
       console.error('Failed to load staff list:', error);
-      // Use fallback staff list
-      setStaffList([
-        { name: 'fix', rank: 'Owner' },
-        { name: 'KarlOfDuty', rank: 'Admin' },
-        { name: 'Seranis', rank: 'Admin' },
-        { name: '32Oreo', rank: 'Moderator' },
-        { name: 'ElectricBird', rank: 'Moderator' },
-        { name: 'Fruitloopins', rank: 'Moderator' },
-      ]);
+      setStaffList([]);
     }
   };
 
@@ -237,11 +134,7 @@ const ServerStatus = () => {
       staff.name.toLowerCase() === playerName.toLowerCase()
     );
     
-    if (staffMember) {
-      return staffMember.rank;
-    }
-    
-    return 'Player';
+    return staffMember ? staffMember.rank : 'Player';
   };
 
   // Helper function to get rank colors
@@ -289,11 +182,11 @@ const ServerStatus = () => {
         };
       default:
         return {
-          bg: 'bg-red-600',
-          border: 'border-red-500/20',
-          cardBg: 'bg-red-900/20',
-          text: 'text-red-300',
-          badgeBg: 'bg-red-600/30'
+          bg: 'bg-gray-600',
+          border: 'border-gray-500/20',
+          cardBg: 'bg-gray-900/20',
+          text: 'text-gray-300',
+          badgeBg: 'bg-gray-600/30'
         };
     }
   };
@@ -318,14 +211,13 @@ const ServerStatus = () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            query: [] // Empty query to get all players
+            query: []
           })
         });
 
         if (playersResponse.ok) {
           const responseText = await playersResponse.text();
           
-          // Check if response is valid JSON
           let playersData;
           try {
             playersData = JSON.parse(responseText);
@@ -335,30 +227,27 @@ const ServerStatus = () => {
           
           console.log('Real players data received:', playersData);
           
-          // The API returns an object with player names/UUIDs as keys, similar to PlayerLookup
           const playerKeys = Object.keys(playersData);
           
           if (playerKeys.length > 0) {
             const onlinePlayersData = playerKeys
               .map(key => {
                 const player = playersData[key];
-                // Check if player is online using the same logic as PlayerLookup
                 if (player && player.status && player.status.isOnline) {
                   return {
                     name: player.name || key,
                     title: player.title,
                     nickname: player.nickname,
-                    town: player.town?.name, // Real town from API
-                    nation: player.nation?.name, // Real nation from API
+                    town: player.town?.name,
+                    nation: player.nation?.name,
                     isStaff: isStaffMember(player.name || key),
                     rank: getPlayerRank(player.name || key, player.title)
                   };
                 }
                 return null;
               })
-              .filter(player => player !== null) // Remove offline players
+              .filter(player => player !== null)
               .sort((a, b) => {
-                // Sort staff first, then alphabetical
                 if (a.isStaff && !b.isStaff) return -1;
                 if (!a.isStaff && b.isStaff) return 1;
                 return a.name.localeCompare(b.name);
@@ -401,7 +290,6 @@ const ServerStatus = () => {
   };
 
   useEffect(() => {
-    // Load staff list first, then fetch server data
     loadStaffList().then(() => {
       fetchServerData();
     });
@@ -823,7 +711,7 @@ const ServerStatus = () => {
                 <h4 className="text-sm font-semibold text-yellow-400">Nations</h4>
                 <div className="flex items-center space-x-2">
                   <span className="text-2xl font-bold">
-                    {loading ? <Skeleton className="h-8 w-16" /> : (serverData?.stats.numNations || 0).toLocaleString()}
+{loading ? <Skeleton className="h-8 w-16" /> : (serverData?.stats.numNations || 0).toLocaleString()}
                   </span>
                   {dailyChanges?.nations ? (
                     <div className={`flex items-center space-x-1 text-sm ${
