@@ -63,7 +63,7 @@ const ServerStatus = () => {
   const [playerLimit, setPlayerLimit] = useState(20);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
   const [playerLoadingStatus, setPlayerLoadingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [displayLimit, setDisplayLimit] = useState(20);
+  const [displayLimit, setDisplayLimit] = useState(30);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Helper functions for time display
@@ -244,8 +244,6 @@ const ServerStatus = () => {
       console.log('Fetching online players...');
 
       const proxyUrl = 'https://corsproxy.io/?';
-      
-      // First, get the list of all players
       const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
       
       if (!playersResponse.ok) {
@@ -253,29 +251,26 @@ const ServerStatus = () => {
       }
       
       const allPlayers = await playersResponse.json();
-      console.log('Total players in database:', allPlayers.length);
       
       if (!Array.isArray(allPlayers) || allPlayers.length === 0) {
         throw new Error('No players data received');
       }
 
-      // Strategy: Check players in larger, randomized batches to find online ones
-      const batchSize = 150;
-      const maxBatches = 10; // Check up to 1500 players total
+      // Strategy: Check players in randomized batches to find online ones
+      const shuffledPlayers = [...allPlayers].sort(() => Math.random() - 0.5);
+      const batchSize = 200;
+      const maxInitialBatches = 5; // Check up to 1000 players initially
       const foundOnlinePlayers: any[] = [];
       
-      // Shuffle the array to get a random sample rather than just the first players
-      const shuffledPlayers = [...allPlayers].sort(() => Math.random() - 0.5);
-      
-      for (let batch = 0; batch < maxBatches; batch++) {
+      for (let batch = 0; batch < maxInitialBatches; batch++) {
         const startIndex = batch * batchSize;
         const endIndex = Math.min(startIndex + batchSize, shuffledPlayers.length);
         const batchPlayers = shuffledPlayers.slice(startIndex, endIndex).map(p => p.name || p.uuid);
         
         try {
-          console.log(`Checking batch ${batch + 1}/${maxBatches} (${batchPlayers.length} players)...`);
+          console.log(`Initial batch ${batch + 1}/${maxInitialBatches} (${batchPlayers.length} players)...`);
           
-          const batchResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+          const detailResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -292,8 +287,8 @@ const ServerStatus = () => {
             })
           });
 
-          if (batchResponse.ok) {
-            const batchData = await batchResponse.json();
+          if (detailResponse.ok) {
+            const batchData = await detailResponse.json();
             const batchOnline = batchData.filter((player: any) => 
               player.status && player.status.isOnline === true
             );
@@ -302,20 +297,17 @@ const ServerStatus = () => {
               foundOnlinePlayers.push(...batchOnline);
               console.log(`Found ${batchOnline.length} online players in batch ${batch + 1}, total: ${foundOnlinePlayers.length}`);
               
-              // If we've found enough players for initial display, we can stop early
-              if (foundOnlinePlayers.length >= 30) {
-                console.log('Found enough online players for initial display');
-                break;
+              // If we've found enough players for good initial display, we can continue but don't need to rush
+              if (foundOnlinePlayers.length >= 25) {
+                console.log('Found good amount of online players for initial display');
               }
             }
-          } else {
-            console.log(`Batch ${batch + 1} request failed:`, batchResponse.status);
           }
 
           // Delay between batches to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise(resolve => setTimeout(resolve, 250));
         } catch (batchError) {
-          console.log(`Batch ${batch + 1} failed:`, batchError);
+          console.log(`Initial batch ${batch + 1} failed:`, batchError);
         }
       }
 
@@ -505,21 +497,6 @@ const ServerStatus = () => {
         { name: 'Warriorrr', rank: 'Helper' }
       ];
       setStaffList(fallbackStaff);
-    }
-  }, []);
-
-  // Add the missing loadMoreOnlinePlayers function
-  const loadMoreOnlinePlayers = useCallback(async () => {
-    setIsLoadingMore(true);
-    try {
-      // This would fetch more players, but since the API is limited, 
-      // we'll just increase the display limit
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate loading
-      setDisplayLimit(prev => prev + 20);
-    } catch (error) {
-      console.error('Error loading more players:', error);
-    } finally {
-      setIsLoadingMore(false);
     }
   }, []);
 
