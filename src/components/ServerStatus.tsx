@@ -215,32 +215,20 @@ const ServerStatus = () => {
 
   // Generate mock players for demo when API doesn't provide online players
   const generateMockPlayers = (count: number): Player[] => {
-    // Mix of real staff names and regular player names
+    // Only use real staff names from the loaded staff list
     const realStaffNames = staffList.map(staff => staff.name);
-    const mockPlayerNames = [
-      'BuilderPro', 'MineCraftLord', 'EarthMC_Fan', 'TownMayor', 'NationLeader',
-      'PixelArtist', 'RedstoneGuru', 'ExplorerMax', 'TraderJoe', 'ArchitectAce',
-      'CrafterMike', 'DiggerDan', 'FarmerBob', 'MinerSam', 'BuilderJoe',
-      'BlockCrafter', 'StoneMiner', 'TreeChopper', 'WaterWalker', 'SkyBuilder',
-      'Owner_Alex', 'Admin_Sarah', 'Developer_Mike', 'Mod_Johnson', 'Helper_Emma'
-    ];
     
-    // Include some real staff members in the mock data
-    const allNames = [...realStaffNames.slice(0, 3), ...mockPlayerNames];
-    
-    const mockTowns = ['Berlin', 'Tokyo', 'London', 'Paris', 'NewYork', 'Sydney', 'Rome', 'Madrid', 'Cairo', 'Mumbai'];
-    const mockNations = ['Germany', 'Japan', 'Britain', 'France', 'USA', 'Australia', 'Italy', 'Spain', 'Egypt', 'India'];
-    
-    // Generate players based on the server count but cap at a reasonable display number
-    const playersToShow = Math.min(count, 20);
+    // Only include real staff members, no fake player names or fake towns/nations
     const players = [];
     
-    for (let i = 0; i < playersToShow; i++) {
-      const name = allNames[i] || `Player${i + 1}`;
+    // Add some real staff members if they exist (without fake towns/nations)
+    for (let i = 0; i < Math.min(realStaffNames.length, 5); i++) {
+      const name = realStaffNames[i];
       players.push({
         name,
-        town: mockTowns[Math.floor(Math.random() * mockTowns.length)],
-        nation: mockNations[Math.floor(Math.random() * mockNations.length)],
+        // Don't assign fake towns/nations - leave them undefined
+        town: undefined,
+        nation: undefined,
         isStaff: isStaffMember(name),
         rank: getPlayerRank(name)
       });
@@ -266,19 +254,14 @@ const ServerStatus = () => {
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
-      // Always generate mock players since the real API likely doesn't provide detailed online player info
-      console.log('Generating mock players for', serverInfo.stats.numOnlinePlayers, 'online players');
-      const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
-      setOnlinePlayers(mockPlayers);
-
-      // Try to fetch online players from API (but expect it to fail)
+      // Try to fetch online players from API first - this should give us real towns/nations
       try {
         const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
         if (playersResponse.ok) {
           const playersData = await playersResponse.json();
           console.log('Real players data received:', playersData);
           
-          // If we get real data, process it
+          // If we get real data, process it with real towns/nations
           let playersArray = Array.isArray(playersData) ? playersData : Object.values(playersData);
           
           if (playersArray.length > 0) {
@@ -288,8 +271,8 @@ const ServerStatus = () => {
                 name: player.name || player.nickname,
                 title: player.title,
                 nickname: player.nickname,
-                town: player.town,
-                nation: player.nation,
+                town: player.town, // Real town from API
+                nation: player.nation, // Real nation from API
                 isStaff: isStaffMember(player.name || player.nickname),
                 rank: getPlayerRank(player.name || player.nickname, player.title)
               }))
@@ -300,13 +283,31 @@ const ServerStatus = () => {
               });
             
             if (onlinePlayersData.length > 0) {
+              console.log('Using real online players data with real towns/nations');
               setOnlinePlayers(onlinePlayersData);
+            } else {
+              // No online players in real data, use minimal mock data (no fake towns/nations)
+              console.log('No online players in real data, generating minimal mock data');
+              const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
+              setOnlinePlayers(mockPlayers);
             }
+          } else {
+            // No real data available, use minimal mock data (no fake towns/nations)
+            console.log('No real player data available, generating minimal mock data');
+            const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
+            setOnlinePlayers(mockPlayers);
           }
+        } else {
+          // API call failed, use minimal mock data (no fake towns/nations)
+          console.log('Players API call failed, generating minimal mock data');
+          const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
+          setOnlinePlayers(mockPlayers);
         }
       } catch (playersError) {
-        console.log('Could not fetch real online players, using mock data:', playersError);
-        // Mock data is already set above
+        console.log('Could not fetch real online players, using minimal mock data:', playersError);
+        // Use minimal mock data as fallback (no fake towns/nations)
+        const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
+        setOnlinePlayers(mockPlayers);
       }
 
       // Fetch towns data
