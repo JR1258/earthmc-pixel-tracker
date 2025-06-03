@@ -235,7 +235,7 @@ const ServerStatus = () => {
     };
   }, [historicalData, calculateDailyChange]);
 
-  // Function to try to get online players from the server data or through alternative methods
+  // Enhanced function to fetch online players
   const fetchOnlinePlayers = useCallback(async () => {
     try {
       setPlayerLoadingStatus('loading');
@@ -243,112 +243,168 @@ const ServerStatus = () => {
 
       const proxyUrl = 'https://corsproxy.io/?';
       
-      // Try to fetch online players from the dedicated endpoint
-      try {
-        const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
-        
-        if (playersResponse.ok) {
-          const playersData = await playersResponse.json();
-          console.log('Players data received:', playersData);
-          
-          // Handle different possible response structures
-          let onlinePlayersArray = [];
-          
-          if (Array.isArray(playersData)) {
-            onlinePlayersArray = playersData;
-          } else if (playersData.players && Array.isArray(playersData.players)) {
-            onlinePlayersArray = playersData.players;
-          } else if (typeof playersData === 'object') {
-            // If it's an object, convert values to array
-            onlinePlayersArray = Object.values(playersData);
-          }
-          
-          if (onlinePlayersArray.length > 0) {
-            const processedPlayers = onlinePlayersArray
-              .map((player: any) => {
-                const name = typeof player === 'string' ? player : (player.name || player.nickname || 'Unknown');
-                return {
-                  name,
-                  isStaff: isStaffMember(name),
-                  rank: getPlayerRank(name),
-                  isOnline: true,
-                  town: typeof player === 'object' ? player.town : undefined,
-                  nation: typeof player === 'object' ? player.nation : undefined
-                };
-              })
-              .filter(player => player.name !== 'Unknown') // Filter out invalid entries
-              .sort((a, b) => {
-                if (a.isStaff && !b.isStaff) return -1;
-                if (!a.isStaff && b.isStaff) return 1;
-                return a.name.localeCompare(b.name);
-              });
-            
-            console.log('Processed players:', processedPlayers);
-            setOnlinePlayers(processedPlayers);
-            setPlayerLoadingStatus('success');
-            return;
-          }
-        }
-      } catch (playersError) {
-        console.log('Players endpoint failed, trying alternative method:', playersError);
+      // First, get the list of all players
+      const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
+      
+      if (!playersResponse.ok) {
+        throw new Error('Failed to fetch players list');
+      }
+      
+      const allPlayers = await playersResponse.json();
+      console.log('Total players in database:', allPlayers.length);
+      
+      if (!Array.isArray(allPlayers) || allPlayers.length === 0) {
+        throw new Error('No players data received');
       }
 
-      // Alternative: Try to get server info that might include online players
-      try {
-        const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
-        
-        if (serverResponse.ok) {
-          const serverInfo = await serverResponse.json();
-          console.log('Server info for players:', serverInfo);
-          
-          // Check various possible locations for player data
-          let playersArray = null;
-          
-          if (serverInfo.players) playersArray = serverInfo.players;
-          else if (serverInfo.online_players) playersArray = serverInfo.online_players;
-          else if (serverInfo.onlinePlayers) playersArray = serverInfo.onlinePlayers;
-          
-          if (playersArray && Array.isArray(playersArray) && playersArray.length > 0) {
-            const processedPlayers = playersArray
-              .map((player: any) => {
-                const name = typeof player === 'string' ? player : (player.name || player.nickname || 'Unknown');
-                return {
-                  name,
-                  isStaff: isStaffMember(name),
-                  rank: getPlayerRank(name),
-                  isOnline: true,
-                  town: typeof player === 'object' ? player.town : undefined,
-                  nation: typeof player === 'object' ? player.nation : undefined
-                };
-              })
-              .filter(player => player.name !== 'Unknown')
-              .sort((a, b) => {
-                if (a.isStaff && !b.isStaff) return -1;
-                if (!a.isStaff && b.isStaff) return 1;
-                return a.name.localeCompare(b.name);
-              });
-            
-            console.log('Processed players from server info:', processedPlayers);
-            setOnlinePlayers(processedPlayers);
-            setPlayerLoadingStatus('success');
-            return;
+      // Take a subset of players to check (to avoid overwhelming the API)
+      // We'll check the first 200 players and see who's online
+      const playersToCheck = allPlayers.slice(0, 200).map(p => p.name || p.uuid);
+      
+      // Now do a POST request to get detailed info for these players
+      const detailResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: playersToCheck,
+          template: {
+            name: true,
+            uuid: true,
+            title: true,
+            town: true,
+            nation: true,
+            status: true
           }
-        }
-      } catch (serverError) {
-        console.log('Server info fetch failed:', serverError);
+        })
+      });
+
+      if (!detailResponse.ok) {
+        throw new Error('Failed to fetch detailed player data');
       }
 
-    // If all methods fail, set empty array but don't show error
-    console.log('Could not fetch online players from any endpoint');
-    setOnlinePlayers([]);
-    setPlayerLoadingStatus('error');
-    
-  } catch (error) {
-    console.error('Error in fetchOnlinePlayers:', error);
-    setOnlinePlayers([]);
-    setPlayerLoadingStatus('error');
-  }
-}, [isStaffMember, getPlayerRank]);
+      const detailedPlayers = await detailResponse.json();
+      console.log('Detailed players data received:', detailedPlayers);
+
+      // Filter for only online players
+      const onlinePlayersData = detailedPlayers.filter((player: any) => 
+        player.status && player.status.isOnline === true
+      );
+
+      console.log('Found online players:', onlinePlayersData.length);
+
+      if (onlinePlayersData.length > 0) {
+        const processedPlayers = onlinePlayersData
+          .map((player: any) => ({
+            name: player.name,
+            isStaff: isStaffMember(player.name),
+            rank: getPlayerRank(player.name, player.title),
+            isOnline: true,
+            town: player.town?.name,
+            nation: player.nation?.name,
+            title: player.title
+          }))
+          .sort((a, b) => {
+            if (a.isStaff && !b.isStaff) return -1;
+            if (!a.isStaff && b.isStaff) return 1;
+            return a.name.localeCompare(b.name);
+          });
+
+        console.log('Processed online players:', processedPlayers);
+        setOnlinePlayers(processedPlayers);
+        setPlayerLoadingStatus('success');
+        return;
+      }
+
+      // If no online players found in our sample, try a different approach
+      console.log('No online players found in sample, trying alternative method...');
+      
+      // Alternative: Check if server data has online player count and try random sampling
+      if (serverData?.stats.numOnlinePlayers && serverData.stats.numOnlinePlayers > 0) {
+        // Try checking more players in batches
+        const batchSize = 100;
+        const maxBatches = 5; // Check up to 500 players total
+        
+        for (let batch = 0; batch < maxBatches; batch++) {
+          const startIndex = batch * batchSize;
+          const endIndex = Math.min(startIndex + batchSize, allPlayers.length);
+          const batchPlayers = allPlayers.slice(startIndex, endIndex).map(p => p.name || p.uuid);
+          
+          try {
+            const batchResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                query: batchPlayers,
+                template: {
+                  name: true,
+                  title: true,
+                  town: true,
+                  nation: true,
+                  status: true
+                }
+              })
+            });
+
+            if (batchResponse.ok) {
+              const batchData = await batchResponse.json();
+              const batchOnline = batchData.filter((player: any) => 
+                player.status && player.status.isOnline === true
+              );
+
+              if (batchOnline.length > 0) {
+                const processedBatch = batchOnline.map((player: any) => ({
+                  name: player.name,
+                  isStaff: isStaffMember(player.name),
+                  rank: getPlayerRank(player.name, player.title),
+                  isOnline: true,
+                  town: player.town?.name,
+                  nation: player.nation?.name,
+                  title: player.title
+                }));
+
+                setOnlinePlayers(prevPlayers => {
+                  const combined = [...prevPlayers, ...processedBatch];
+                  return combined
+                    .filter((player, index, self) => 
+                      index === self.findIndex(p => p.name === player.name)
+                    )
+                    .sort((a, b) => {
+                      if (a.isStaff && !b.isStaff) return -1;
+                      if (!a.isStaff && b.isStaff) return 1;
+                      return a.name.localeCompare(b.name);
+                    });
+                });
+                
+                console.log(`Found ${batchOnline.length} online players in batch ${batch + 1}`);
+              }
+            }
+
+            // Small delay between batches to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (batchError) {
+            console.log(`Batch ${batch + 1} failed:`, batchError);
+          }
+        }
+
+        setPlayerLoadingStatus('success');
+        return;
+      }
+
+      // If all methods fail
+      console.log('Could not find any online players');
+      setOnlinePlayers([]);
+      setPlayerLoadingStatus('error');
+      
+    } catch (error) {
+      console.error('Error in fetchOnlinePlayers:', error);
+      setOnlinePlayers([]);
+      setPlayerLoadingStatus('error');
+    }
+  }, [isStaffMember, getPlayerRank, serverData]);
 
   // Enhanced fetchServerData function
   const fetchServerData = useCallback(async () => {
