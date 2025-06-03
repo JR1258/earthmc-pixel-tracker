@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -62,7 +61,7 @@ const ServerStatus = () => {
   const [playerLimit, setPlayerLimit] = useState(50);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
 
-  // Helper function to get latest data changes
+  // Helper functions to get latest data changes
   const getLatestData = () => {
     if (historicalData.length < 2) return null;
     
@@ -88,67 +87,91 @@ const ServerStatus = () => {
   };
 
   // Helper functions for time display
-  const formatServerTime = () => {
-    return currentTime.toLocaleTimeString('en-US', { 
-      hour12: false, 
-      hour: '2-digit', 
+  const formatServerTime = useCallback(() => {
+    return currentTime.toLocaleTimeString('en-US', {
+      timeZone: 'America/New_York',
+      hour12: true,
+      hour: '2-digit',
       minute: '2-digit',
       second: '2-digit'
     });
-  };
+  }, [currentTime]);
 
-  const getServerTimezone = () => {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  };
+  const getServerTimezone = useCallback(() => {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en', {
+      timeZone: 'America/New_York',
+      timeZoneName: 'short'
+    });
+    const parts = formatter.formatToParts(now);
+    const timeZone = parts.find(part => part.type === 'timeZoneName');
+    return timeZone ? timeZone.value : 'EST';
+  }, []);
 
-  const getMinecraftTimeOfDay = () => {
+  const getMinecraftTimeOfDay = useCallback(() => {
     const hour = currentTime.getHours();
     if (hour >= 6 && hour < 18) {
       return { period: 'Day', icon: '☀️' };
     } else {
       return { period: 'Night', icon: '🌙' };
     }
-  };
+  }, [currentTime]);
 
   // Helper function for rank colors
-  const getRankColors = (rank: string) => {
-    const rankLower = rank.toLowerCase();
-    if (rankLower.includes('admin') || rankLower.includes('owner')) {
-      return {
-        bg: 'bg-red-600',
-        text: 'text-red-300',
-        border: 'border-red-500/20',
-        cardBg: 'bg-red-900/20',
-        badgeBg: 'bg-red-600/20'
-      };
-    } else if (rankLower.includes('mod') || rankLower.includes('moderator')) {
-      return {
-        bg: 'bg-orange-600',
-        text: 'text-orange-300',
-        border: 'border-orange-500/20',
-        cardBg: 'bg-orange-900/20',
-        badgeBg: 'bg-orange-600/20'
-      };
-    } else if (rankLower.includes('helper') || rankLower.includes('assist')) {
-      return {
-        bg: 'bg-blue-600',
-        text: 'text-blue-300',
-        border: 'border-blue-500/20',
-        cardBg: 'bg-blue-900/20',
-        badgeBg: 'bg-blue-600/20'
-      };
-    } else {
-      return {
-        bg: 'bg-purple-600',
-        text: 'text-purple-300',
-        border: 'border-purple-500/20',
-        cardBg: 'bg-purple-900/20',
-        badgeBg: 'bg-purple-600/20'
-      };
+  const getRankColors = useCallback((rank: string) => {
+    switch (rank) {
+      case 'Owner':
+        return {
+          bg: 'bg-red-600',
+          border: 'border-red-500/20',
+          cardBg: 'bg-red-900/20',
+          text: 'text-red-300',
+          badgeBg: 'bg-red-600/30'
+        };
+      case 'Admin':
+        return {
+          bg: 'bg-blue-600',
+          border: 'border-blue-500/20',
+          cardBg: 'bg-blue-900/20',
+          text: 'text-blue-300',
+          badgeBg: 'bg-blue-600/30'
+        };
+      case 'Developer':
+        return {
+          bg: 'bg-cyan-600',
+          border: 'border-cyan-500/20',
+          cardBg: 'bg-cyan-900/20',
+          text: 'text-cyan-300',
+          badgeBg: 'bg-cyan-600/30'
+        };
+      case 'Moderator':
+        return {
+          bg: 'bg-green-700',
+          border: 'border-green-600/20',
+          cardBg: 'bg-green-900/20',
+          text: 'text-green-300',
+          badgeBg: 'bg-green-700/30'
+        };
+      case 'Helper':
+        return {
+          bg: 'bg-green-300',
+          border: 'border-green-200/20',
+          cardBg: 'bg-green-100/10',
+          text: 'text-green-200',
+          badgeBg: 'bg-green-300/30'
+        };
+      default:
+        return {
+          bg: 'bg-gray-600',
+          border: 'border-gray-500/20',
+          cardBg: 'bg-gray-900/20',
+          text: 'text-gray-300',
+          badgeBg: 'bg-gray-600/30'
+        };
     }
-  };
+  }, []);
 
-  const loadHistoricalData = async () => {
+  const loadHistoricalData = useCallback(async () => {
     try {
       const last7Days = await getLast7Days();
       const today = new Date();
@@ -175,9 +198,9 @@ const ServerStatus = () => {
     } catch (error) {
       console.error('Failed to load historical data:', error);
     }
-  };
+  }, []);
 
-  const saveCurrentStats = () => {
+  const saveCurrentStats = useCallback(() => {
     if (!serverData || !shouldSaveToday()) return;
     
     const saved = saveToday({
@@ -190,7 +213,46 @@ const ServerStatus = () => {
     if (saved) {
       loadHistoricalData();
     }
-  };
+  }, [serverData, loadHistoricalData]);
+
+  // Helper functions for staff identification
+  const isStaffMember = useCallback((playerName: string): boolean => {
+    return staffList.some(staff => 
+      staff.name.toLowerCase() === playerName.toLowerCase()
+    );
+  }, [staffList]);
+
+  const getPlayerRank = useCallback((playerName: string, title?: string): string => {
+    if (title) return title;
+    
+    const staffMember = staffList.find(staff => 
+      staff.name.toLowerCase() === playerName.toLowerCase()
+    );
+    
+    return staffMember ? staffMember.rank : 'Player';
+  }, [staffList]);
+
+  const calculateDailyChange = useCallback((current: number, previous: number) => {
+    const change = current - previous;
+    return { change };
+  }, []);
+
+  const getLatestData = useCallback(() => {
+    const validData = historicalData.filter(d => 
+      d.residents !== null && d.towns !== null && d.nations !== null
+    );
+    
+    if (validData.length < 2) return null;
+    
+    const today = validData[validData.length - 1];
+    const yesterday = validData[validData.length - 2];
+    
+    return {
+      residents: calculateDailyChange(today.residents!, yesterday.residents!),
+      towns: calculateDailyChange(today.towns!, yesterday.towns!),
+      nations: calculateDailyChange(today.nations!, yesterday.nations!),
+    };
+  }, [historicalData, calculateDailyChange]);
 
   // Memoize the fetchServerData function to prevent infinite loops
   const fetchServerData = useCallback(async () => {
@@ -207,8 +269,7 @@ const ServerStatus = () => {
       console.log('Server info received:', serverInfo);
       setServerData(serverInfo);
 
-      // REMOVE the complex player fetching for now to prevent build issues
-      // Just show placeholder based on server stats
+      // Create mock players for now to prevent build issues
       const numOnline = serverInfo.stats?.numOnlinePlayers || 0;
       if (numOnline > 0) {
         const mockPlayers: Player[] = [];
@@ -227,7 +288,7 @@ const ServerStatus = () => {
 
       // Fetch towns data with timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       try {
         const townsResponse = await fetch(
@@ -257,7 +318,7 @@ const ServerStatus = () => {
     } finally {
       setLoading(false);
     }
-  }, [playerLimit]); // Only depend on playerLimit
+  }, []);
 
   // Memoize staff list loading
   const loadStaffList = useCallback(async () => {
@@ -300,23 +361,21 @@ const ServerStatus = () => {
     return () => {
       mounted = false;
     };
-  }, []); // Empty dependency array for initial load
+  }, [loadStaffList, fetchServerData, loadHistoricalData]);
 
   // Separate useEffect for interval
   useEffect(() => {
     const interval = setInterval(() => {
       fetchServerData();
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
   }, [fetchServerData]);
 
   // Fix the saveCurrentStats useEffect
   useEffect(() => {
-    if (serverData) {
-      saveCurrentStats();
-    }
-  }, [serverData]);
+    saveCurrentStats();
+  }, [saveCurrentStats]);
 
   // Clock timer
   useEffect(() => {
@@ -329,7 +388,7 @@ const ServerStatus = () => {
   // Memoize expensive calculations
   const staffMembers = useMemo(() => onlinePlayers.filter(p => p.isStaff), [onlinePlayers]);
   const regularPlayers = useMemo(() => onlinePlayers.filter(p => !p.isStaff), [onlinePlayers]);
-  const dailyChanges = useMemo(() => getLatestData(), [historicalData]);
+  const dailyChanges = useMemo(() => getLatestData(), [getLatestData]);
 
   // Simplify load more functions
   const loadMorePlayers = useCallback(() => {
@@ -341,7 +400,7 @@ const ServerStatus = () => {
     setPlayerLimit(showAllPlayers ? 50 : 1000);
   }, [showAllPlayers]);
 
-  const SimpleChart = ({ data, dataKey, color }: { data: ChartData[], dataKey: keyof ChartData, color: string }) => {
+  const SimpleChart = useCallback(({ data, dataKey, color }: { data: ChartData[], dataKey: keyof ChartData, color: string }) => {
     const validData = data.filter(d => d[dataKey] !== null);
     
     if (validData.length === 0) {
@@ -395,7 +454,7 @@ const ServerStatus = () => {
         })}
       </div>
     );
-  };
+  }, []);
 
   if (error) {
     return (
@@ -502,7 +561,7 @@ const ServerStatus = () => {
         </div>
       </div>
 
-      {/* Online Players Section - With Safety Limits */}
+      {/* Online Players Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Staff Members */}
         <Card className="bg-black/40 border-red-500/20 text-white">
@@ -562,7 +621,7 @@ const ServerStatus = () => {
           </CardContent>
         </Card>
 
-        {/* Regular Players - With Load More */}
+        {/* Regular Players */}
         <Card className="bg-black/40 border-blue-500/20 text-white">
           <CardHeader>
             <CardTitle className="text-blue-400 flex items-center space-x-2">
@@ -570,13 +629,10 @@ const ServerStatus = () => {
               <span>Players Online</span>
               <Badge variant="secondary" className="bg-blue-600/20 text-blue-300">
                 {regularPlayers.length}
-                {serverData?.stats.numOnlinePlayers && regularPlayers.length < serverData.stats.numOnlinePlayers && 
-                  ` of ${serverData.stats.numOnlinePlayers}`
-                }
               </Badge>
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Currently online players {!showAllPlayers && `(showing first ${playerLimit})`}
+              Currently online players
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -587,54 +643,27 @@ const ServerStatus = () => {
                 ))}
               </div>
             ) : regularPlayers.length > 0 ? (
-              <>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {regularPlayers.slice(0, 20).map((player, index) => (
-                    <div
-                      key={player.name + index}
-                      className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                          <User className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-blue-300">{player.name}</div>
-                          <div className="text-xs text-gray-400">
-                            {player.town && <span>{player.town}</span>}
-                            {player.nation && <span> • {player.nation}</span>}
-                          </div>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {regularPlayers.slice(0, 20).map((player, index) => (
+                  <div
+                    key={player.name + index}
+                    className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-blue-300">{player.name}</div>
+                        <div className="text-xs text-gray-400">
+                          {player.town && <span>{player.town}</span>}
+                          {player.nation && <span> • {player.nation}</span>}
                         </div>
                       </div>
                     </div>
-                  ))}
-                  {regularPlayers.length > 20 && (
-                    <div className="text-center py-2 text-gray-400 text-sm">
-                      +{regularPlayers.length - 20} more players loaded
-                    </div>
-                  )}
-                </div>
-                
-                {/* Load More Controls */}
-                {serverData?.stats.numOnlinePlayers && regularPlayers.length < serverData.stats.numOnlinePlayers && (
-                  <div className="mt-4 space-y-2">
-                    <button
-                      onClick={loadMorePlayers}
-                      className="w-full p-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 rounded-lg text-blue-300 text-sm transition-colors"
-                      disabled={loading}
-                    >
-                      Load More Players (+50)
-                    </button>
-                    <button
-                      onClick={toggleShowAllPlayers}
-                      className="w-full p-2 bg-yellow-600/20 hover:bg-yellow-600/30 border border-yellow-500/30 rounded-lg text-yellow-300 text-sm transition-colors"
-                      disabled={loading}
-                    >
-                      {showAllPlayers ? 'Show Less' : 'Load All Players (May be slow)'}
-                    </button>
                   </div>
-                )}
-              </>
+                ))}
+              </div>
             ) : (
               <div className="text-center py-8 text-gray-400">
                 <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -653,7 +682,7 @@ const ServerStatus = () => {
             <span>7-Day Growth Trends</span>
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Historical server growth data (shared across all users)
+            Historical server growth data
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -709,7 +738,7 @@ const ServerStatus = () => {
                 <h4 className="text-sm font-semibold text-yellow-400">Nations</h4>
                 <div className="flex items-center space-x-2">
                   <span className="text-2xl font-bold">
-{loading ? <Skeleton className="h-8 w-16" /> : (serverData?.stats.numNations || 0).toLocaleString()}
+                    {loading ? <Skeleton className="h-8 w-16" /> : (serverData?.stats.numNations || 0).toLocaleString()}
                   </span>
                   {dailyChanges?.nations ? (
                     <div className={`flex items-center space-x-1 text-sm ${
@@ -726,18 +755,6 @@ const ServerStatus = () => {
               <SimpleChart data={historicalData} dataKey="nations" color="#eab308" />
               <div className="text-xs text-gray-400 text-center">Past 7 days</div>
             </div>
-          </div>
-
-          {/* Data Info */}
-          <div className="mt-6 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-            <div className="flex items-center space-x-2 text-blue-400 mb-2">
-              <Activity className="w-4 h-4" />
-              <span className="text-sm font-semibold">Shared Data Storage</span>
-            </div>
-            <p className="text-xs text-gray-400">
-              Historical data is shared via GitHub Gist. All users see the same charts and trends.
-              {dailyChanges ? " Growth indicators are available!" : " Growth comparisons will appear after 2+ days of data."}
-            </p>
           </div>
         </CardContent>
       </Card>
