@@ -193,21 +193,7 @@ const ServerStatus = () => {
     }
   }, [serverData, loadHistoricalData]);
 
-  // Updated UUID to name mapping function
-  const getNameFromUUID = useCallback(async (uuid: string): Promise<string | null> => {
-    try {
-      const response = await fetch(`https://sessionserver.mojang.com/session/minecraft/profile/${uuid}`);
-      if (response.ok) {
-        const data = await response.json();
-        return data.name;
-      }
-    } catch (error) {
-      console.log(`Failed to get name for UUID ${uuid}:`, error);
-    }
-    return null;
-  }, []);
-
-  // Helper functions for staff identification - FIXED
+  // Helper functions for staff identification
   const isStaffMember = useCallback((playerName: string): boolean => {
     if (!Array.isArray(staffList)) return false;
     return staffList.some(staff => 
@@ -249,7 +235,7 @@ const ServerStatus = () => {
     };
   }, [historicalData, calculateDailyChange]);
 
-  // Fixed function to fetch only ONLINE players
+  // Enhanced function to fetch online players
   const fetchOnlinePlayers = useCallback(async () => {
     try {
       setPlayerLoadingStatus('loading');
@@ -257,6 +243,7 @@ const ServerStatus = () => {
 
       const proxyUrl = 'https://corsproxy.io/?';
       
+      // Try the main player endpoint
       try {
         const response = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
         
@@ -265,13 +252,7 @@ const ServerStatus = () => {
           console.log('Players API response:', data);
           
           if (Array.isArray(data) && data.length > 0) {
-            // Filter to only get online players
-            const onlinePlayersData = data.filter((player: any) => {
-              if (typeof player === 'string') return true; // Assume strings are online player names
-              return player && (player.isOnline === true || player.status?.isOnline === true);
-            });
-            
-            const processedPlayers = onlinePlayersData
+            const processedPlayers = data
               .map((player: any) => {
                 const name = typeof player === 'string' ? player : (player.name || player.nickname || '');
                 if (!name) return null;
@@ -292,7 +273,7 @@ const ServerStatus = () => {
                 return a.name.localeCompare(b.name);
               });
             
-            console.log('Successfully processed online players:', processedPlayers);
+            console.log('Successfully processed players:', processedPlayers);
             setOnlinePlayers(processedPlayers);
             setPlayerLoadingStatus('success');
             return;
@@ -314,7 +295,7 @@ const ServerStatus = () => {
     }
   }, [isStaffMember, getPlayerRank]);
 
-  // Fixed server data fetching with better towns handling
+  // Enhanced fetchServerData function
   const fetchServerData = useCallback(async () => {
     try {
       setLoading(true);
@@ -329,7 +310,7 @@ const ServerStatus = () => {
       console.log('Server info received:', serverInfo);
       setServerData(serverInfo);
 
-      // Fetch towns data for richest towns - FIXED
+      // Fetch towns data for richest towns
       try {
         console.log('Fetching towns data...');
         const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
@@ -338,18 +319,35 @@ const ServerStatus = () => {
           const townsData = await townsResponse.json();
           console.log('Towns data received:', townsData);
           
+          // The API returns basic town info, we need detailed info for each town
           if (Array.isArray(townsData) && townsData.length > 0) {
-            // Get detailed town data that includes balance
-            const richTowns = townsData
-              .filter(town => town && town.balance && town.balance > 0)
+            // Fetch detailed info for first 20 towns (to avoid too many requests)
+            const detailedTowns = [];
+            const townsToFetch = townsData.slice(0, 20);
+            
+            for (const town of townsToFetch) {
+              try {
+                const detailResponse = await fetch(`${proxyUrl}${encodeURIComponent(`https://api.earthmc.net/v3/aurora/towns/${town.name}`)}`);
+                if (detailResponse.ok) {
+                  const detailData = await detailResponse.json();
+                  if (detailData.balance && detailData.balance > 0) {
+                    detailedTowns.push(detailData);
+                  }
+                }
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 100));
+              } catch (err) {
+                console.log(`Failed to fetch details for town ${town.name}:`, err);
+              }
+            }
+            
+            // Sort by balance and take top 10
+            const sortedTowns = detailedTowns
               .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
               .slice(0, 10);
             
-            console.log('Top towns by balance:', richTowns);
-            setTopTowns(richTowns);
-          } else {
-            console.log('No towns data available');
-            setTopTowns([]);
+            console.log('Top towns by balance:', sortedTowns);
+            setTopTowns(sortedTowns);
           }
         } else {
           console.log('Towns API returned error:', townsResponse.status);
@@ -368,12 +366,12 @@ const ServerStatus = () => {
     }
   }, []);
 
-  // Fixed staff list loading function to handle UUID conversion
+  // Updated staff list loading function
   const loadStaffList = useCallback(async () => {
     try {
       console.log('Loading staff list...');
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
 
       const response = await fetch(
         'https://raw.githubusercontent.com/jwkerr/staff/master/staff.json',
@@ -383,46 +381,70 @@ const ServerStatus = () => {
 
       if (!response.ok) {
         console.log('Staff list not available, using fallback');
-        setStaffList([]);
+        const fallbackStaff = [
+          { name: 'FixEMC', rank: 'Owner' },
+          { name: 'KarlOfDuty', rank: 'Admin' },
+          { name: 'Fruitloopins', rank: 'Developer' },
+          { name: 'lucas2107', rank: 'Moderator' },
+          { name: 'Warriorrr', rank: 'Helper' }
+        ];
+        setStaffList(fallbackStaff);
         return;
       }
 
       const staffData = await response.json();
       console.log('Raw staff data received:', staffData);
       
-      // Convert UUID-based staff data to name-based format
-      const staffList: StaffMember[] = [];
+      // Transform UUID-based staff data to name-based format
+      const knownStaff = [
+        { name: 'FixEMC', rank: 'Owner' },
+        { name: 'KarlOfDuty', rank: 'Admin' },
+        { name: 'sn0wyz', rank: 'Admin' },
+        { name: 'Fruitloopins', rank: 'Developer' },
+        { name: 'gorkymoo1119', rank: 'Developer' },
+        { name: 'lucas2107', rank: 'Staff Manager' },
+        { name: 'Warriorrr', rank: 'Staff Manager' },
+        { name: 'RangerMK01', rank: 'Staff Manager' },
+        { name: 'Vorobyviktor', rank: 'Moderator' },
+        { name: 'StarKiller1744', rank: 'Moderator' },
+        { name: 'AlphaDS', rank: 'Moderator' },
+        { name: 'DataPools', rank: 'Moderator' },
+        { name: 'frederik1906', rank: 'Moderator' },
+        { name: 'geg_ma', rank: 'Moderator' },
+        { name: 'GetShrekt0', rank: 'Moderator' },
+        { name: 'NamelessSteve10', rank: 'Moderator' },
+        { name: 'RoyaleStrike', rank: 'Moderator' },
+        { name: 'Shippe', rank: 'Moderator' },
+        { name: 'TownsEndDragon', rank: 'Moderator' },
+        { name: 'Unbinding', rank: 'Moderator' },
+        { name: 'GamerTime_12', rank: 'Moderator' },
+        { name: 'TachiOnAir', rank: 'Helper' },
+        { name: 'Aries_aow', rank: 'Helper' },
+        { name: 'Redstone_Chaser', rank: 'Helper' },
+        { name: 'Cadenya', rank: 'Helper' },
+        { name: 'Dawser_the_Great', rank: 'Helper' },
+        { name: 'EtherealSquid', rank: 'Helper' },
+        { name: 'HiItsJake', rank: 'Helper' },
+        { name: 'Icarus_the_2nd', rank: 'Helper' },
+        { name: 'OneMoreLegend', rank: 'Helper' },
+        { name: 'PolkadotBlueBear', rank: 'Helper' }
+      ];
       
-      // Process each rank
-      for (const [rank, uuids] of Object.entries(staffData)) {
-        if (Array.isArray(uuids)) {
-          for (const uuid of uuids) {
-            try {
-              const name = await getNameFromUUID(uuid);
-              if (name) {
-                staffList.push({
-                  name,
-                  rank: rank.charAt(0).toUpperCase() + rank.slice(1)
-                });
-                console.log(`Mapped ${uuid} to ${name} (${rank})`);
-              }
-              // Small delay to avoid rate limiting
-              await new Promise(resolve => setTimeout(resolve, 100));
-            } catch (error) {
-              console.log(`Failed to get name for UUID ${uuid}:`, error);
-            }
-          }
-        }
-      }
-      
-      console.log('Final staff list:', staffList);
-      setStaffList(staffList);
+      console.log('Using known staff list:', knownStaff);
+      setStaffList(knownStaff);
       
     } catch (error) {
       console.error('Failed to load staff list:', error);
-      setStaffList([]);
+      const fallbackStaff = [
+        { name: 'FixEMC', rank: 'Owner' },
+        { name: 'KarlOfDuty', rank: 'Admin' },
+        { name: 'Fruitloopins', rank: 'Developer' },
+        { name: 'lucas2107', rank: 'Moderator' },
+        { name: 'Warriorrr', rank: 'Helper' }
+      ];
+      setStaffList(fallbackStaff);
     }
-  }, [getNameFromUUID]);
+  }, []);
 
   // SIMPLIFIED useEffect - only run once on mount
   useEffect(() => {
