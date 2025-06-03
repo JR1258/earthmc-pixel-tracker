@@ -254,14 +254,14 @@ const ServerStatus = () => {
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
-      // Try to fetch online players from API first - this should give us real towns/nations
+      // Try to fetch online players from API - only use real data
       try {
         const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
         if (playersResponse.ok) {
           const playersData = await playersResponse.json();
           console.log('Real players data received:', playersData);
           
-          // If we get real data, process it with real towns/nations
+          // If we get real data, process it
           let playersArray = Array.isArray(playersData) ? playersData : Object.values(playersData);
           
           if (playersArray.length > 0) {
@@ -282,32 +282,22 @@ const ServerStatus = () => {
                 return a.name.localeCompare(b.name);
               });
             
-            if (onlinePlayersData.length > 0) {
-              console.log('Using real online players data with real towns/nations');
-              setOnlinePlayers(onlinePlayersData);
-            } else {
-              // No online players in real data, use minimal mock data (no fake towns/nations)
-              console.log('No online players in real data, generating minimal mock data');
-              const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
-              setOnlinePlayers(mockPlayers);
-            }
+            console.log('Using real online players data with real towns/nations');
+            setOnlinePlayers(onlinePlayersData);
           } else {
-            // No real data available, use minimal mock data (no fake towns/nations)
-            console.log('No real player data available, generating minimal mock data');
-            const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
-            setOnlinePlayers(mockPlayers);
+            // No online players in real data, set empty array
+            console.log('No online players in real data');
+            setOnlinePlayers([]);
           }
         } else {
-          // API call failed, use minimal mock data (no fake towns/nations)
-          console.log('Players API call failed, generating minimal mock data');
-          const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
-          setOnlinePlayers(mockPlayers);
+          // API call failed, set empty array
+          console.log('Players API call failed');
+          setOnlinePlayers([]);
         }
       } catch (playersError) {
-        console.log('Could not fetch real online players, using minimal mock data:', playersError);
-        // Use minimal mock data as fallback (no fake towns/nations)
-        const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
-        setOnlinePlayers(mockPlayers);
+        console.log('Could not fetch real online players:', playersError);
+        // Set empty array as fallback
+        setOnlinePlayers([]);
       }
 
       // Fetch towns data
@@ -342,14 +332,11 @@ const ServerStatus = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Update the dependency to regenerate players when staff list changes
   useEffect(() => {
-    if (serverData && staffList.length > 0) {
-      const mockPlayers = generateMockPlayers(serverData.stats.numOnlinePlayers);
-      setOnlinePlayers(mockPlayers);
+    if (serverData) {
       saveCurrentStats();
     }
-  }, [serverData, staffList]);
+  }, [serverData]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -575,7 +562,7 @@ const ServerStatus = () => {
         </div>
       </div>
 
-      {/* Online Players Section - With Custom Staff Colors */}
+      {/* Online Players Section - Only Real Data */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Staff Members */}
         <Card className="bg-black/40 border-red-500/20 text-white">
