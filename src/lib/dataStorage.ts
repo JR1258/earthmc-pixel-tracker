@@ -118,16 +118,21 @@ export const shouldSaveToday = (): boolean => {
 const saveToLocalStorage = (stats: DailyStats) => {
   try {
     const existing = getLocalData();
-    const todayIndex = existing.findIndex(s => s.date === stats.date);
+    console.log('Existing data type:', typeof existing, 'Array?', Array.isArray(existing));
+    
+    // Ensure existing is always an array
+    const validExisting = Array.isArray(existing) ? existing : [];
+    
+    const todayIndex = validExisting.findIndex(s => s.date === stats.date);
     
     if (todayIndex >= 0) {
-      existing[todayIndex] = stats;
+      validExisting[todayIndex] = stats;
     } else {
-      existing.push(stats);
+      validExisting.push(stats);
     }
     
     // Keep only last 30 days
-    const sorted = existing
+    const sorted = validExisting
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(-30);
     
@@ -143,8 +148,21 @@ const saveToLocalStorage = (stats: DailyStats) => {
 const getLocalData = (): DailyStats[] => {
   try {
     const stored = localStorage.getItem('earthmc_historical_data');
-    return stored ? JSON.parse(stored) : [];
+    if (!stored) {
+      return [];
+    }
+    
+    const parsed = JSON.parse(stored);
+    
+    // Ensure we always return an array
+    if (Array.isArray(parsed)) {
+      return parsed;
+    } else {
+      console.warn('Stored data is not an array, returning empty array');
+      return [];
+    }
   } catch (error) {
+    console.error('Error parsing localStorage data:', error);
     return [];
   }
 };
@@ -165,4 +183,3 @@ const getLast7DaysLocal = (): (DailyStats | null)[] => {
   
   return result;
 };
-// Export local data functions for testing
