@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +61,92 @@ const ServerStatus = () => {
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
   const [playerLimit, setPlayerLimit] = useState(50);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
+
+  // Helper function to get latest data changes
+  const getLatestData = () => {
+    if (historicalData.length < 2) return null;
+    
+    const latest = historicalData[historicalData.length - 1];
+    const previous = historicalData[historicalData.length - 2];
+    
+    if (!latest || !previous) return null;
+    
+    return {
+      residents: latest.residents && previous.residents ? {
+        current: latest.residents,
+        change: latest.residents - previous.residents
+      } : null,
+      towns: latest.towns && previous.towns ? {
+        current: latest.towns,
+        change: latest.towns - previous.towns
+      } : null,
+      nations: latest.nations && previous.nations ? {
+        current: latest.nations,
+        change: latest.nations - previous.nations
+      } : null
+    };
+  };
+
+  // Helper functions for time display
+  const formatServerTime = () => {
+    return currentTime.toLocaleTimeString('en-US', { 
+      hour12: false, 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
+  const getServerTimezone = () => {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  };
+
+  const getMinecraftTimeOfDay = () => {
+    const hour = currentTime.getHours();
+    if (hour >= 6 && hour < 18) {
+      return { period: 'Day', icon: '☀️' };
+    } else {
+      return { period: 'Night', icon: '🌙' };
+    }
+  };
+
+  // Helper function for rank colors
+  const getRankColors = (rank: string) => {
+    const rankLower = rank.toLowerCase();
+    if (rankLower.includes('admin') || rankLower.includes('owner')) {
+      return {
+        bg: 'bg-red-600',
+        text: 'text-red-300',
+        border: 'border-red-500/20',
+        cardBg: 'bg-red-900/20',
+        badgeBg: 'bg-red-600/20'
+      };
+    } else if (rankLower.includes('mod') || rankLower.includes('moderator')) {
+      return {
+        bg: 'bg-orange-600',
+        text: 'text-orange-300',
+        border: 'border-orange-500/20',
+        cardBg: 'bg-orange-900/20',
+        badgeBg: 'bg-orange-600/20'
+      };
+    } else if (rankLower.includes('helper') || rankLower.includes('assist')) {
+      return {
+        bg: 'bg-blue-600',
+        text: 'text-blue-300',
+        border: 'border-blue-500/20',
+        cardBg: 'bg-blue-900/20',
+        badgeBg: 'bg-blue-600/20'
+      };
+    } else {
+      return {
+        bg: 'bg-purple-600',
+        text: 'text-purple-300',
+        border: 'border-purple-500/20',
+        cardBg: 'bg-purple-900/20',
+        badgeBg: 'bg-purple-600/20'
+      };
+    }
+  };
 
   const loadHistoricalData = async () => {
     try {
