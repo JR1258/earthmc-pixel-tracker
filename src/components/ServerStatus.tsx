@@ -49,94 +49,6 @@ interface StaffMember {
   discord?: string;
 }
 
-// Pagination constants and helper functions
-const PLAYERS_PER_PAGE = 50;
-
-// Pagination helper functions - moved to top to avoid hoisting issues
-const getPaginatedData = (data: Player[], currentPage: number) => {
-  const startIndex = (currentPage - 1) * PLAYERS_PER_PAGE;
-  const endIndex = startIndex + PLAYERS_PER_PAGE;
-  return data.slice(startIndex, endIndex);
-};
-
-const getTotalPages = (totalItems: number) => {
-  return Math.ceil(totalItems / PLAYERS_PER_PAGE);
-};
-
-const PaginationControls = ({ 
-  currentPage, 
-  totalPages, 
-  onPageChange, 
-  totalItems, 
-  itemType 
-}: {
-  currentPage: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-  totalItems: number;
-  itemType: string;
-}) => {
-  if (totalPages <= 1) return null;
-
-  const startItem = (currentPage - 1) * PLAYERS_PER_PAGE + 1;
-  const endItem = Math.min(currentPage * PLAYERS_PER_PAGE, totalItems);
-
-  return (
-    <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-700/50">
-      <div className="text-xs text-gray-400">
-        Showing {startItem}-{endItem} of {totalItems} {itemType}
-      </div>
-      <div className="flex items-center space-x-2">
-        <button
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage === 1}
-          className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
-        >
-          Previous
-        </button>
-        
-        {/* Page numbers */}
-        <div className="flex items-center space-x-1">
-          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-            let pageNum;
-            if (totalPages <= 5) {
-              pageNum = i + 1;
-            } else if (currentPage <= 3) {
-              pageNum = i + 1;
-            } else if (currentPage >= totalPages - 2) {
-              pageNum = totalPages - 4 + i;
-            } else {
-              pageNum = currentPage - 2 + i;
-            }
-
-            return (
-              <button
-                key={pageNum}
-                onClick={() => onPageChange(pageNum)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  currentPage === pageNum
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                }`}
-              >
-                {pageNum}
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage === totalPages}
-          className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
-        >
-          Next
-        </button>
-      </div>
-    </div>
-  );
-};
-
 const ServerStatus = () => {
   const [serverData, setServerData] = useState<ServerData | null>(null);
   const [topTowns, setTopTowns] = useState<Town[]>([]);
@@ -146,10 +58,6 @@ const ServerStatus = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
-  
-  // Pagination states
-  const [staffCurrentPage, setStaffCurrentPage] = useState(1);
-  const [playersCurrentPage, setPlayersCurrentPage] = useState(1);
 
   const loadHistoricalData = async () => {
     try {
@@ -296,132 +204,13 @@ const ServerStatus = () => {
         };
       default:
         return {
-          bg: 'bg-gray-600',
-          border: 'border-gray-500/20',
-          cardBg: 'bg-gray-800/20',
-          text: 'text-gray-300',
-          badgeBg: 'bg-gray-600/30'
+          bg: 'bg-red-600',
+          border: 'border-red-500/20',
+          cardBg: 'bg-red-900/20',
+          text: 'text-red-300',
+          badgeBg: 'bg-red-600/30'
         };
     }
-  };
-
-  // Fetch online players with better error handling and multiple approaches
-  const fetchOnlinePlayers = async (proxyUrl: string) => {
-    console.log('Attempting to fetch online players...');
-    
-    // Method 1: Try to get specific online players
-    try {
-      const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: [] // Empty query to get all players
-        })
-      });
-
-      if (playersResponse.ok) {
-        const responseText = await playersResponse.text();
-        console.log('Raw players response:', responseText.substring(0, 500) + '...');
-        
-        let playersData;
-        try {
-          playersData = JSON.parse(responseText);
-        } catch (jsonError) {
-          console.error('JSON parse error:', jsonError);
-          throw new Error('Invalid JSON response');
-        }
-        
-        console.log('Parsed players data:', playersData);
-        
-        // Check if it's an array or object
-        let processedPlayers = [];
-        
-        if (Array.isArray(playersData)) {
-          // Handle array response
-          processedPlayers = playersData
-            .filter(player => player && player.status && player.status.isOnline)
-            .map(player => ({
-              name: player.name,
-              title: player.title,
-              nickname: player.nickname,
-              town: player.town?.name,
-              nation: player.nation?.name,
-              isStaff: isStaffMember(player.name),
-              rank: getPlayerRank(player.name, player.title)
-            }));
-        } else if (typeof playersData === 'object' && playersData !== null) {
-          // Handle object response (keys are player names/UUIDs)
-          const playerKeys = Object.keys(playersData);
-          console.log(`Found ${playerKeys.length} player keys`);
-          
-          processedPlayers = playerKeys
-            .map(key => {
-              const player = playersData[key];
-              if (player && player.status && player.status.isOnline) {
-                return {
-                  name: player.name || key,
-                  title: player.title,
-                  nickname: player.nickname,
-                  town: player.town?.name,
-                  nation: player.nation?.name,
-                  isStaff: isStaffMember(player.name || key),
-                  rank: getPlayerRank(player.name || key, player.title)
-                };
-              }
-              return null;
-            })
-            .filter(player => player !== null);
-        }
-        
-        if (processedPlayers.length > 0) {
-          processedPlayers.sort((a, b) => {
-            if (a.isStaff && !b.isStaff) return -1;
-            if (!a.isStaff && b.isStaff) return 1;
-            return a.name.localeCompare(b.name);
-          });
-          
-          console.log(`Successfully processed ${processedPlayers.length} online players`);
-          return processedPlayers;
-        }
-      }
-    } catch (error) {
-      console.error('Method 1 failed:', error);
-    }
-
-    // Method 2: Try alternative endpoint or approach
-    try {
-      console.log('Trying alternative approach...');
-      const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
-      if (serverResponse.ok) {
-        const serverData = await serverResponse.json();
-        
-        // Check if server data contains online players list
-        if (serverData.players && Array.isArray(serverData.players)) {
-          const onlineFromServer = serverData.players
-            .filter(player => player.isOnline)
-            .map(player => ({
-              name: player.name,
-              title: player.title,
-              town: player.town,
-              nation: player.nation,
-              isStaff: isStaffMember(player.name),
-              rank: getPlayerRank(player.name, player.title)
-            }));
-          
-          if (onlineFromServer.length > 0) {
-            console.log(`Found ${onlineFromServer.length} players from server data`);
-            return onlineFromServer;
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Method 2 failed:', error);
-    }
-
-    console.log('All methods failed, returning empty array');
-    return [];
   };
 
   const fetchServerData = async () => {
@@ -431,20 +220,79 @@ const ServerStatus = () => {
 
       const proxyUrl = 'https://corsproxy.io/?';
 
-      // Fetch main server data
       const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
       if (!serverResponse.ok) throw new Error('Failed to fetch server data');
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
-      console.log('Server data loaded:', serverInfo);
-      console.log(`Server reports ${serverInfo.stats.numOnlinePlayers} players online`);
+      // Try to fetch online players from API using POST method like PlayerLookup
+      try {
+        const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: [] // Empty query to get all players
+          })
+        });
 
-      // Fetch online players using improved method
-      const onlinePlayersData = await fetchOnlinePlayers(proxyUrl);
-      setOnlinePlayers(onlinePlayersData);
-      
-      console.log(`Displaying ${onlinePlayersData.length} online players`);
+        if (playersResponse.ok) {
+          const responseText = await playersResponse.text();
+          
+          // Check if response is valid JSON
+          let playersData;
+          try {
+            playersData = JSON.parse(responseText);
+          } catch (jsonError) {
+            throw new Error('Invalid response format from API');
+          }
+          
+          console.log('Real players data received:', playersData);
+          
+          // The API returns an object with player names/UUIDs as keys, similar to PlayerLookup
+          const playerKeys = Object.keys(playersData);
+          
+          if (playerKeys.length > 0) {
+            const onlinePlayersData = playerKeys
+              .map(key => {
+                const player = playersData[key];
+                // Check if player is online using the same logic as PlayerLookup
+                if (player && player.status && player.status.isOnline) {
+                  return {
+                    name: player.name || key,
+                    title: player.title,
+                    nickname: player.nickname,
+                    town: player.town?.name, // Real town from API
+                    nation: player.nation?.name, // Real nation from API
+                    isStaff: isStaffMember(player.name || key),
+                    rank: getPlayerRank(player.name || key, player.title)
+                  };
+                }
+                return null;
+              })
+              .filter(player => player !== null) // Remove offline players
+              .sort((a, b) => {
+                // Sort staff first, then alphabetical
+                if (a.isStaff && !b.isStaff) return -1;
+                if (!a.isStaff && b.isStaff) return 1;
+                return a.name.localeCompare(b.name);
+              });
+            
+            console.log(`Found ${onlinePlayersData.length} online players from API`);
+            setOnlinePlayers(onlinePlayersData);
+          } else {
+            console.log('No players found in API response');
+            setOnlinePlayers([]);
+          }
+        } else {
+          console.log('Players API call failed with status:', playersResponse.status);
+          setOnlinePlayers([]);
+        }
+      } catch (playersError) {
+        console.log('Error fetching online players:', playersError);
+        setOnlinePlayers([]);
+      }
 
       // Fetch towns data
       const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
@@ -546,18 +394,6 @@ const ServerStatus = () => {
   const dailyChanges = getLatestData();
   const staffMembers = onlinePlayers.filter(p => p.isStaff);
   const regularPlayers = onlinePlayers.filter(p => !p.isStaff);
-
-  // Get paginated data
-  const paginatedStaff = getPaginatedData(staffMembers, staffCurrentPage);
-  const paginatedPlayers = getPaginatedData(regularPlayers, playersCurrentPage);
-  const staffTotalPages = getTotalPages(staffMembers.length);
-  const playersTotalPages = getTotalPages(regularPlayers.length);
-
-  // Reset pagination when data changes
-  useEffect(() => {
-    setStaffCurrentPage(1);
-    setPlayersCurrentPage(1);
-  }, [onlinePlayers]);
 
   const SimpleChart = ({ data, dataKey, color }: { data: ChartData[], dataKey: keyof ChartData, color: string }) => {
     const validData = data.filter(d => d[dataKey] !== null);
@@ -720,7 +556,7 @@ const ServerStatus = () => {
         </div>
       </div>
 
-      {/* Online Players Section - With Pagination */}
+      {/* Online Players Section - Only Real Data */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Staff Members */}
         <Card className="bg-black/40 border-red-500/20 text-white">
@@ -734,11 +570,6 @@ const ServerStatus = () => {
             </CardTitle>
             <CardDescription className="text-gray-400">
               Currently online staff members
-              {serverData && onlinePlayers.length === 0 && (
-                <span className="text-yellow-400 ml-2">
-                  (API shows {serverData.stats.numOnlinePlayers} total online, but detailed data unavailable)
-                </span>
-              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -749,51 +580,37 @@ const ServerStatus = () => {
                 ))}
               </div>
             ) : staffMembers.length > 0 ? (
-              <div>
-                <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {paginatedStaff.map((staff, index) => {
-                    const colors = getRankColors(staff.rank || 'Staff');
-                    return (
-                      <div
-                        key={staff.name + index}
-                        className={`flex items-center justify-between p-3 ${colors.cardBg} rounded-lg border ${colors.border}`}
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className={`w-8 h-8 ${colors.bg} rounded-full flex items-center justify-center`}>
-                            <Shield className="w-4 h-4 text-white" />
-                          </div>
-                          <div>
-                            <div className={`font-semibold ${colors.text}`}>{staff.name}</div>
-                            <div className="text-xs text-gray-400">
-                              {staff.rank}
-                              {staff.town && <span> • {staff.town}</span>}
-                            </div>
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {staffMembers.map((staff, index) => {
+                  const colors = getRankColors(staff.rank || 'Staff');
+                  return (
+                    <div
+                      key={staff.name + index}
+                      className={`flex items-center justify-between p-3 ${colors.cardBg} rounded-lg border ${colors.border}`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-8 h-8 ${colors.bg} rounded-full flex items-center justify-center`}>
+                          <Shield className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <div className={`font-semibold ${colors.text}`}>{staff.name}</div>
+                          <div className="text-xs text-gray-400">
+                            {staff.rank}
+                            {staff.town && <span> • {staff.town}</span>}
                           </div>
                         </div>
-                        <Badge className={`${colors.badgeBg} ${colors.text} text-xs`}>
-                          {staff.rank}
-                        </Badge>
                       </div>
-                    );
-                  })}
-                </div>
-                <PaginationControls
-                  currentPage={staffCurrentPage}
-                  totalPages={staffTotalPages}
-                  onPageChange={setStaffCurrentPage}
-                  totalItems={staffMembers.length}
-                  itemType="staff"
-                />
+                      <Badge className={`${colors.badgeBg} ${colors.text} text-xs`}>
+                        {staff.rank}
+                      </Badge>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-400">
                 <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No staff members online</p>
-                {serverData && serverData.stats.numOnlinePlayers > 0 && (
-                  <p className="text-xs mt-2 text-yellow-400">
-                    Server reports {serverData.stats.numOnlinePlayers} players online, but individual player data is not accessible
-                  </p>
-                )}
               </div>
             )}
           </CardContent>
@@ -811,11 +628,6 @@ const ServerStatus = () => {
             </CardTitle>
             <CardDescription className="text-gray-400">
               Currently online players
-              {serverData && onlinePlayers.length === 0 && (
-                <span className="text-yellow-400 ml-2">
-                  (Server total: {serverData.stats.numOnlinePlayers})
-                </span>
-              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -826,50 +638,36 @@ const ServerStatus = () => {
                 ))}
               </div>
             ) : regularPlayers.length > 0 ? (
-              <div>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {paginatedPlayers.map((player, index) => (
-                    <div
-                      key={player.name + index}
-                      className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                          <User className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-blue-300">{player.name}</div>
-                          <div className="text-xs text-gray-400">
-                            {player.town && <span>{player.town}</span>}
-                            {player.nation && <span> • {player.nation}</span>}
-                          </div>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {regularPlayers.slice(0, 10).map((player, index) => (
+                  <div
+                    key={player.name + index}
+                    className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-blue-300">{player.name}</div>
+                        <div className="text-xs text-gray-400">
+                          {player.town && <span>{player.town}</span>}
+                          {player.nation && <span> • {player.nation}</span>}
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-                <PaginationControls
-                  currentPage={playersCurrentPage}
-                  totalPages={playersTotalPages}
-                  onPageChange={setPlayersCurrentPage}
-                  totalItems={regularPlayers.length}
-                  itemType="players"
-                />
+                  </div>
+                ))}
+                {regularPlayers.length > 10 && (
+                  <div className="text-center py-2 text-gray-400 text-sm">
+                    +{regularPlayers.length - 10} more players online
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-400">
                 <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Individual player data unavailable</p>
-                {serverData && serverData.stats.numOnlinePlayers > 0 && (
-                  <div className="text-xs mt-2 space-y-1">
-                    <p className="text-yellow-400">
-                      Server reports {serverData.stats.numOnlinePlayers} players online
-                    </p>
-                    <p className="text-gray-500">
-                      The EarthMC API may be limiting detailed player data access
-                    </p>
-                  </div>
-                )}
+                <p>No players online</p>
               </div>
             )}
           </CardContent>
