@@ -63,6 +63,8 @@ const ServerStatus = () => {
   const [playerLimit, setPlayerLimit] = useState(20);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
   const [playerLoadingStatus, setPlayerLoadingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [displayLimit, setDisplayLimit] = useState(20);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Helper functions for time display
   const formatServerTime = useCallback(() => {
@@ -503,6 +505,21 @@ const ServerStatus = () => {
         { name: 'Warriorrr', rank: 'Helper' }
       ];
       setStaffList(fallbackStaff);
+    }
+  }, []);
+
+  // Add the missing loadMoreOnlinePlayers function
+  const loadMoreOnlinePlayers = useCallback(async () => {
+    setIsLoadingMore(true);
+    try {
+      // This would fetch more players, but since the API is limited, 
+      // we'll just increase the display limit
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate loading
+      setDisplayLimit(prev => prev + 20);
+    } catch (error) {
+      console.error('Error loading more players:', error);
+    } finally {
+      setIsLoadingMore(false);
     }
   }, []);
 
