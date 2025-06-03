@@ -22,6 +22,8 @@ interface Player {
   nation?: string;
   isStaff?: boolean;
   rank?: string;
+  lastOnline?: number;
+  isOnline?: boolean;
 }
 
 interface ServerData {
@@ -58,8 +60,9 @@ const ServerStatus = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
-  const [playerLimit, setPlayerLimit] = useState(20); // Reduced from 50 to 20
+  const [playerLimit, setPlayerLimit] = useState(20);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
+  const [playerLoadingStatus, setPlayerLoadingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   // Helper functions for time display
   const formatServerTime = useCallback(() => {
@@ -212,7 +215,6 @@ const ServerStatus = () => {
     return { change };
   }, []);
 
-  // SINGLE getLatestData function - removed the duplicate
   const getLatestData = useCallback(() => {
     const validData = historicalData.filter(d => 
       d.residents !== null && d.towns !== null && d.nations !== null
@@ -230,6 +232,102 @@ const ServerStatus = () => {
     };
   }, [historicalData, calculateDailyChange]);
 
+  // NEW: Function to fetch real online players
+  const fetchOnlinePlayers = useCallback(async () => {
+    try {
+      setPlayerLoadingStatus('loading');
+      console.log('Fetching online players...');
+
+      // Method 1: Try to get residents and filter for recently active ones
+      const proxyUrl = 'https://corsproxy.io/?';
+      
+      // First, try to get a sample of residents to check their online status
+      const residentsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/residents')}`);
+      
+      if (!residentsResponse.ok) {
+        throw new Error('Failed to fetch residents data');
+      }
+      
+      const residentsData = await residentsResponse.json();
+      console.log('Residents data type:', typeof residentsData);
+      console.log('Sample residents keys:', Object.keys(residentsData).slice(0, 5));
+      
+      if (typeof residentsData === 'object' && !Array.isArray(residentsData)) {
+        const residentNames = Object.keys(residentsData);
+        const sampleSize = Math.min(100, residentNames.length); // Sample first 100 residents
+        const sampleNames = residentNames.slice(0, sampleSize);
+        
+        console.log(`Checking ${sampleNames.length} residents for online status...`);
+        
+        // Use POST to get detailed info for sampled residents
+        const detailedResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/residents')}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: sampleNames
+          })
+        });
+        
+        if (detailedResponse.ok) {
+          const detailedData = await detailedResponse.json();
+          console.log('Detailed residents data received, checking for online players...');
+          
+          const onlinePlayersFound: Player[] = [];
+          const now = Date.now();
+          const fiveMinutesAgo = now - (5 * 60 * 1000); // 5 minutes threshold
+          
+          Object.entries(detailedData).forEach(([playerName, playerData]: [string, any]) => {
+            if (playerData && typeof playerData === 'object') {
+              // Check if player is explicitly marked as online or was very recently active
+              const isOnline = playerData.isOnline || 
+                              playerData.status?.isOnline || 
+                              (playerData.lastOnline && playerData.lastOnline > fiveMinutesAgo) ||
+                              (playerData.timestamps?.lastOnline && playerData.timestamps.lastOnline > fiveMinutesAgo);
+              
+              if (isOnline) {
+                const player: Player = {
+                  name: playerName,
+                  town: playerData.town?.name || playerData.townName,
+                  nation: playerData.nation?.name || playerData.nationName,
+                  isStaff: isStaffMember(playerName),
+                  rank: getPlayerRank(playerName, playerData.title),
+                  isOnline: true,
+                  lastOnline: playerData.lastOnline || playerData.timestamps?.lastOnline
+                };
+                onlinePlayersFound.push(player);
+              }
+            }
+          });
+          
+          console.log(`Found ${onlinePlayersFound.length} online players from residents check`);
+          
+          // Sort by staff first, then by name
+          onlinePlayersFound.sort((a, b) => {
+            if (a.isStaff && !b.isStaff) return -1;
+            if (!a.isStaff && b.isStaff) return 1;
+            return a.name.localeCompare(b.name);
+          });
+          
+          setOnlinePlayers(onlinePlayersFound);
+          setPlayerLoadingStatus('success');
+          return;
+        }
+      }
+      
+      // Fallback: If we can't get real online players, show a message but no mock data
+      console.log('Could not determine online players from API');
+      setOnlinePlayers([]);
+      setPlayerLoadingStatus('error');
+      
+    } catch (error) {
+      console.error('Error fetching online players:', error);
+      setOnlinePlayers([]);
+      setPlayerLoadingStatus('error');
+    }
+  }, [isStaffMember, getPlayerRank]);
+
   // Memoize the fetchServerData function to prevent infinite loops
   const fetchServerData = useCallback(async () => {
     try {
@@ -245,28 +343,10 @@ const ServerStatus = () => {
       console.log('Server info received:', serverInfo);
       setServerData(serverInfo);
 
-      // Create LIMITED mock players (max 20 initially)
-      const numOnline = serverInfo.stats?.numOnlinePlayers || 0;
-      if (numOnline > 0) {
-        const mockPlayers: Player[] = [];
-        // Create only 5 mock players to test UI and prevent performance issues
-        const playersToCreate = Math.min(5, numOnline);
-        for (let i = 0; i < playersToCreate; i++) {
-          mockPlayers.push({
-            name: `Player_${i + 1}`,
-            isStaff: i < 2,
-            rank: i < 2 ? (i === 0 ? 'Admin' : 'Moderator') : 'Player'
-          });
-        }
-        setOnlinePlayers(mockPlayers);
-      } else {
-        setOnlinePlayers([]);
-      }
-
-      // Fetch towns data with timeout (keep this simpler)
+      // Fetch towns data with timeout
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // Reduced timeout
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
         const townsResponse = await fetch(
           `${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`,
@@ -289,19 +369,22 @@ const ServerStatus = () => {
         setTopTowns([]);
       }
 
+      // After loading server data, try to fetch real online players
+      await fetchOnlinePlayers();
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       console.error('Error fetching server data:', err);
     } finally {
       setLoading(false);
     }
-  }, []); // NO dependencies to prevent infinite loops
+  }, [fetchOnlinePlayers]);
 
   // Memoize staff list loading
   const loadStaffList = useCallback(async () => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // Reduced timeout
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
 
       const response = await fetch(
         'https://raw.githubusercontent.com/jwkerr/staff/master/staff.json',
@@ -341,24 +424,22 @@ const ServerStatus = () => {
     return () => {
       mounted = false;
     };
-  }, []); // Empty dependency array - only run once
+  }, [loadStaffList, fetchServerData, loadHistoricalData]);
 
   // SIMPLIFIED interval useEffect
   useEffect(() => {
     const interval = setInterval(() => {
       console.log('Refreshing server data...');
       fetchServerData();
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, []); // No dependencies to prevent recreation
+  }, [fetchServerData]);
 
   // Save stats when server data changes
   useEffect(() => {
-    if (serverData) {
-      saveCurrentStats();
-    }
-  }, [serverData]); // Only depend on serverData
+    saveCurrentStats();
+  }, [saveCurrentStats]);
 
   // Clock timer
   useEffect(() => {
@@ -375,12 +456,12 @@ const ServerStatus = () => {
 
   // Simplify load more functions
   const loadMorePlayers = useCallback(() => {
-    setPlayerLimit(prev => Math.min(prev + 20, 100)); // Limit to max 100
+    setPlayerLimit(prev => Math.min(prev + 20, 100));
   }, []);
 
   const toggleShowAllPlayers = useCallback(() => {
     setShowAllPlayers(prev => !prev);
-    setPlayerLimit(showAllPlayers ? 20 : 100); // Max 100 instead of 1000
+    setPlayerLimit(showAllPlayers ? 20 : 100);
   }, [showAllPlayers]);
 
   const SimpleChart = useCallback(({ data, dataKey, color }: { data: ChartData[], dataKey: keyof ChartData, color: string }) => {
@@ -561,7 +642,7 @@ const ServerStatus = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {playerLoadingStatus === 'loading' ? (
               <div className="space-y-3">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className="h-12 w-full" />
@@ -599,6 +680,9 @@ const ServerStatus = () => {
               <div className="text-center py-8 text-gray-400">
                 <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No staff members online</p>
+                {playerLoadingStatus === 'error' && (
+                  <p className="text-xs text-gray-500 mt-2">Unable to fetch real-time player data</p>
+                )}
               </div>
             )}
           </CardContent>
@@ -618,11 +702,11 @@ const ServerStatus = () => {
               </Badge>
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Currently online players (showing {Math.min(playerLimit, regularPlayers.length)})
+              Currently online players {playerLoadingStatus === 'success' ? '(real-time data)' : '(limited sample)'}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {playerLoadingStatus === 'loading' ? (
               <div className="space-y-3">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Skeleton key={i} className="h-12 w-full" />
@@ -648,18 +732,19 @@ const ServerStatus = () => {
                           </div>
                         </div>
                       </div>
+                      <div className="text-xs text-green-400">●</div>
                     </div>
                   ))}
                 </div>
                 
-                {/* Load More Controls - only show if we have mock data */}
-                {regularPlayers.length === 5 && serverData?.stats.numOnlinePlayers && serverData.stats.numOnlinePlayers > 5 && (
-                  <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-lg text-center">
-                    <p className="text-yellow-300 text-sm mb-2">
-                      Showing {regularPlayers.length} of {serverData.stats.numOnlinePlayers} online players
+                {/* Status message */}
+                {playerLoadingStatus === 'success' && regularPlayers.length > 0 && (
+                  <div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
+                    <p className="text-green-300 text-sm">
+                      Showing {regularPlayers.length} recently active players
                     </p>
                     <p className="text-gray-400 text-xs">
-                      Player list API integration in progress
+                      Real-time online detection from API sampling
                     </p>
                   </div>
                 )}
@@ -667,7 +752,17 @@ const ServerStatus = () => {
             ) : (
               <div className="text-center py-8 text-gray-400">
                 <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No players online</p>
+                <p>No players detected as online</p>
+                {playerLoadingStatus === 'error' && (
+                  <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
+                    <p className="text-yellow-300 text-sm mb-1">
+                      API Player Detection Issues
+                    </p>
+                    <p className="text-gray-400 text-xs">
+                      Server reports {serverData?.stats.numOnlinePlayers || 0} online players but we cannot access the detailed online player list.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
