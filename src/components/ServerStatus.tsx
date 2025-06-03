@@ -213,35 +213,6 @@ const ServerStatus = () => {
     }
   };
 
-  // Generate mock players for demo when API doesn't provide online players
-  const generateMockPlayers = (count: number): Player[] => {
-    // Only use real staff names from the loaded staff list
-    const realStaffNames = staffList.map(staff => staff.name);
-    
-    // Only include real staff members, no fake player names or fake towns/nations
-    const players = [];
-    
-    // Add some real staff members if they exist (without fake towns/nations)
-    for (let i = 0; i < Math.min(realStaffNames.length, 5); i++) {
-      const name = realStaffNames[i];
-      players.push({
-        name,
-        // Don't assign fake towns/nations - leave them undefined
-        town: undefined,
-        nation: undefined,
-        isStaff: isStaffMember(name),
-        rank: getPlayerRank(name)
-      });
-    }
-    
-    // Sort staff first, then alphabetical
-    return players.sort((a, b) => {
-      if (a.isStaff && !b.isStaff) return -1;
-      if (!a.isStaff && b.isStaff) return 1;
-      return a.name.localeCompare(b.name);
-    });
-  };
-
   const fetchServerData = async () => {
     try {
       setLoading(true);
@@ -261,42 +232,49 @@ const ServerStatus = () => {
           const playersData = await playersResponse.json();
           console.log('Real players data received:', playersData);
           
-          // If we get real data, process it
+          // Handle both array and object responses
           let playersArray = Array.isArray(playersData) ? playersData : Object.values(playersData);
           
           if (playersArray.length > 0) {
+            // Filter for online players and map to our format
             const onlinePlayersData = playersArray
-              .filter((player: any) => player.isOnline || player.online)
+              .filter((player: any) => {
+                // Check multiple possible online status fields
+                return player.isOnline === true || 
+                       player.online === true || 
+                       player.status === 'online' ||
+                       player.isOnline === 'true' ||
+                       player.online === 'true';
+              })
               .map((player: any) => ({
-                name: player.name || player.nickname,
+                name: player.name || player.nickname || player.username,
                 title: player.title,
                 nickname: player.nickname,
                 town: player.town, // Real town from API
                 nation: player.nation, // Real nation from API
-                isStaff: isStaffMember(player.name || player.nickname),
-                rank: getPlayerRank(player.name || player.nickname, player.title)
+                isStaff: isStaffMember(player.name || player.nickname || player.username),
+                rank: getPlayerRank(player.name || player.nickname || player.username, player.title)
               }))
+              .filter(player => player.name) // Remove any players without names
               .sort((a, b) => {
+                // Sort staff first, then alphabetical
                 if (a.isStaff && !b.isStaff) return -1;
                 if (!a.isStaff && b.isStaff) return 1;
                 return a.name.localeCompare(b.name);
               });
             
-            console.log('Using real online players data with real towns/nations');
+            console.log(`Found ${onlinePlayersData.length} online players from API`);
             setOnlinePlayers(onlinePlayersData);
           } else {
-            // No online players in real data, set empty array
-            console.log('No online players in real data');
+            console.log('No players found in API response');
             setOnlinePlayers([]);
           }
         } else {
-          // API call failed, set empty array
-          console.log('Players API call failed');
+          console.log('Players API call failed with status:', playersResponse.status);
           setOnlinePlayers([]);
         }
       } catch (playersError) {
-        console.log('Could not fetch real online players:', playersError);
-        // Set empty array as fallback
+        console.log('Error fetching online players:', playersError);
         setOnlinePlayers([]);
       }
 
