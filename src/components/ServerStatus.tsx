@@ -63,7 +63,7 @@ const ServerStatus = () => {
   const [playerLimit, setPlayerLimit] = useState(20);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
   const [playerLoadingStatus, setPlayerLoadingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [displayLimit, setDisplayLimit] = useState(30);
+  const [displayLimit, setDisplayLimit] = useState(15); // Show 15 players by default
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Helper functions for time display 
@@ -241,78 +241,47 @@ const ServerStatus = () => {
   const fetchOnlinePlayers = useCallback(async () => {
     try {
       setPlayerLoadingStatus('loading');
-      console.log('Fetching online players...');
-
       const proxyUrl = 'https://corsproxy.io/?';
       const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
-      
-      if (!playersResponse.ok) {
-        throw new Error('Failed to fetch players list');
-      }
-      
+      if (!playersResponse.ok) throw new Error('Failed to fetch players list');
       const allPlayers = await playersResponse.json();
-      
-      if (!Array.isArray(allPlayers) || allPlayers.length === 0) {
-        throw new Error('No players data received');
-      }
+      if (!Array.isArray(allPlayers) || allPlayers.length === 0) throw new Error('No players data received');
 
-      // Strategy: Check players in randomized batches to find online ones
-      const shuffledPlayers = [...allPlayers].sort(() => Math.random() - 0.5);
-      const batchSize = 200;
-      const maxInitialBatches = 5; // Check up to 1000 players initially
-      const foundOnlinePlayers: any[] = [];
-      
-      for (let batch = 0; batch < maxInitialBatches; batch++) {
-        const startIndex = batch * batchSize;
-        const endIndex = Math.min(startIndex + batchSize, shuffledPlayers.length);
-        const batchPlayers = shuffledPlayers.slice(startIndex, endIndex).map(p => p.name || p.uuid);
-        
-        try {
-          console.log(`Initial batch ${batch + 1}/${maxInitialBatches} (${batchPlayers.length} players)...`);
-          
-          const detailResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              query: batchPlayers,
-              template: {
-                name: true,
-                title: true,
-                town: true,
-                nation: true,
-                status: true
-              }
-            })
-          });
+      // Get all player names
+      const playerNames = allPlayers.map((p: any) => p.name || p.uuid);
 
-          if (detailResponse.ok) {
-            const batchData = await detailResponse.json();
-            const batchOnline = batchData.filter((player: any) => 
-              player.status && player.status.isOnline === true
-            );
-
-            if (batchOnline.length > 0) {
-              foundOnlinePlayers.push(...batchOnline);
-              console.log(`Found ${batchOnline.length} online players in batch ${batch + 1}, total: ${foundOnlinePlayers.length}`);
-              
-              // If we've found enough players for good initial display, we can continue but don't need to rush
-              if (foundOnlinePlayers.length >= 25) {
-                console.log('Found good amount of online players for initial display');
-              }
+      // Chunk requests to avoid payload limits (max 300 per request)
+      const chunkSize = 300;
+      let detailedPlayers: any[] = [];
+      for (let i = 0; i < playerNames.length; i += chunkSize) {
+        const chunk = playerNames.slice(i, i + chunkSize);
+        const detailResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: chunk,
+            template: {
+              name: true,
+              title: true,
+              town: true,
+              nation: true,
+              status: true
             }
-          }
-
-          // Delay between batches to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 250));
-        } catch (batchError) {
-          console.log(`Initial batch ${batch + 1} failed:`, batchError);
+          })
+        });
+        if (detailResponse.ok) {
+          const chunkData = await detailResponse.json();
+          detailedPlayers = detailedPlayers.concat(chunkData);
         }
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 150));
       }
 
-    if (foundOnlinePlayers.length > 0) {
-      const processedPlayers = foundOnlinePlayers
+      // Filter online players
+      const online = detailedPlayers.filter((player: any) => player.status && player.status.isOnline === true);
+
+      // Map and sort alphabetically
+      const processedPlayers = online
         .map((player: any) => ({
           name: player.name,
           isStaff: isStaffMember(player.name),
@@ -322,32 +291,16 @@ const ServerStatus = () => {
           nation: player.nation?.name,
           title: player.title
         }))
-        .filter((player, index, self) => 
-          index === self.findIndex(p => p.name === player.name) // Remove duplicates
-        )
-        .sort((a, b) => {
-          if (a.isStaff && !b.isStaff) return -1;
-          if (!a.isStaff && b.isStaff) return 1;
-          return a.name.localeCompare(b.name);
-        });
+        .filter((player, index, self) => index === self.findIndex(p => p.name === player.name)) // Remove duplicates
+        .sort((a, b) => a.name.localeCompare(b.name)); // Alphabetical
 
-      console.log('Final processed online players:', processedPlayers.length);
       setOnlinePlayers(processedPlayers);
       setPlayerLoadingStatus('success');
-      return;
+    } catch (error) {
+      setOnlinePlayers([]);
+      setPlayerLoadingStatus('error');
     }
-
-    // If no online players found
-    console.log('Could not find any online players');
-    setOnlinePlayers([]);
-    setPlayerLoadingStatus('error');
-    
-  } catch (error) {
-    console.error('Error in fetchOnlinePlayers:', error);
-    setOnlinePlayers([]);
-    setPlayerLoadingStatus('error');
-  }
-}, [isStaffMember, getPlayerRank]);
+  }, [isStaffMember, getPlayerRank]);
 
   // Add the missing loadMoreOnlinePlayers function
   const loadMoreOnlinePlayers = useCallback(async () => {
