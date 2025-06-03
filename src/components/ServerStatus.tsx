@@ -204,13 +204,132 @@ const ServerStatus = () => {
         };
       default:
         return {
-          bg: 'bg-red-600',
-          border: 'border-red-500/20',
-          cardBg: 'bg-red-900/20',
-          text: 'text-red-300',
-          badgeBg: 'bg-red-600/30'
+          bg: 'bg-gray-600',
+          border: 'border-gray-500/20',
+          cardBg: 'bg-gray-800/20',
+          text: 'text-gray-300',
+          badgeBg: 'bg-gray-600/30'
         };
     }
+  };
+
+  // Fetch online players with better error handling and multiple approaches
+  const fetchOnlinePlayers = async (proxyUrl: string) => {
+    console.log('Attempting to fetch online players...');
+    
+    // Method 1: Try to get specific online players
+    try {
+      const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: [] // Empty query to get all players
+        })
+      });
+
+      if (playersResponse.ok) {
+        const responseText = await playersResponse.text();
+        console.log('Raw players response:', responseText.substring(0, 500) + '...');
+        
+        let playersData;
+        try {
+          playersData = JSON.parse(responseText);
+        } catch (jsonError) {
+          console.error('JSON parse error:', jsonError);
+          throw new Error('Invalid JSON response');
+        }
+        
+        console.log('Parsed players data:', playersData);
+        
+        // Check if it's an array or object
+        let processedPlayers = [];
+        
+        if (Array.isArray(playersData)) {
+          // Handle array response
+          processedPlayers = playersData
+            .filter(player => player && player.status && player.status.isOnline)
+            .map(player => ({
+              name: player.name,
+              title: player.title,
+              nickname: player.nickname,
+              town: player.town?.name,
+              nation: player.nation?.name,
+              isStaff: isStaffMember(player.name),
+              rank: getPlayerRank(player.name, player.title)
+            }));
+        } else if (typeof playersData === 'object' && playersData !== null) {
+          // Handle object response (keys are player names/UUIDs)
+          const playerKeys = Object.keys(playersData);
+          console.log(`Found ${playerKeys.length} player keys`);
+          
+          processedPlayers = playerKeys
+            .map(key => {
+              const player = playersData[key];
+              if (player && player.status && player.status.isOnline) {
+                return {
+                  name: player.name || key,
+                  title: player.title,
+                  nickname: player.nickname,
+                  town: player.town?.name,
+                  nation: player.nation?.name,
+                  isStaff: isStaffMember(player.name || key),
+                  rank: getPlayerRank(player.name || key, player.title)
+                };
+              }
+              return null;
+            })
+            .filter(player => player !== null);
+        }
+        
+        if (processedPlayers.length > 0) {
+          processedPlayers.sort((a, b) => {
+            if (a.isStaff && !b.isStaff) return -1;
+            if (!a.isStaff && b.isStaff) return 1;
+            return a.name.localeCompare(b.name);
+          });
+          
+          console.log(`Successfully processed ${processedPlayers.length} online players`);
+          return processedPlayers;
+        }
+      }
+    } catch (error) {
+      console.error('Method 1 failed:', error);
+    }
+
+    // Method 2: Try alternative endpoint or approach
+    try {
+      console.log('Trying alternative approach...');
+      const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
+      if (serverResponse.ok) {
+        const serverData = await serverResponse.json();
+        
+        // Check if server data contains online players list
+        if (serverData.players && Array.isArray(serverData.players)) {
+          const onlineFromServer = serverData.players
+            .filter(player => player.isOnline)
+            .map(player => ({
+              name: player.name,
+              title: player.title,
+              town: player.town,
+              nation: player.nation,
+              isStaff: isStaffMember(player.name),
+              rank: getPlayerRank(player.name, player.title)
+            }));
+          
+          if (onlineFromServer.length > 0) {
+            console.log(`Found ${onlineFromServer.length} players from server data`);
+            return onlineFromServer;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Method 2 failed:', error);
+    }
+
+    console.log('All methods failed, returning empty array');
+    return [];
   };
 
   const fetchServerData = async () => {
@@ -220,79 +339,20 @@ const ServerStatus = () => {
 
       const proxyUrl = 'https://corsproxy.io/?';
 
+      // Fetch main server data
       const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
       if (!serverResponse.ok) throw new Error('Failed to fetch server data');
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
-      // Try to fetch online players from API using POST method like PlayerLookup
-      try {
-        const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: [] // Empty query to get all players
-          })
-        });
+      console.log('Server data loaded:', serverInfo);
+      console.log(`Server reports ${serverInfo.stats.numOnlinePlayers} players online`);
 
-        if (playersResponse.ok) {
-          const responseText = await playersResponse.text();
-          
-          // Check if response is valid JSON
-          let playersData;
-          try {
-            playersData = JSON.parse(responseText);
-          } catch (jsonError) {
-            throw new Error('Invalid response format from API');
-          }
-          
-          console.log('Real players data received:', playersData);
-          
-          // The API returns an object with player names/UUIDs as keys, similar to PlayerLookup
-          const playerKeys = Object.keys(playersData);
-          
-          if (playerKeys.length > 0) {
-            const onlinePlayersData = playerKeys
-              .map(key => {
-                const player = playersData[key];
-                // Check if player is online using the same logic as PlayerLookup
-                if (player && player.status && player.status.isOnline) {
-                  return {
-                    name: player.name || key,
-                    title: player.title,
-                    nickname: player.nickname,
-                    town: player.town?.name, // Real town from API
-                    nation: player.nation?.name, // Real nation from API
-                    isStaff: isStaffMember(player.name || key),
-                    rank: getPlayerRank(player.name || key, player.title)
-                  };
-                }
-                return null;
-              })
-              .filter(player => player !== null) // Remove offline players
-              .sort((a, b) => {
-                // Sort staff first, then alphabetical
-                if (a.isStaff && !b.isStaff) return -1;
-                if (!a.isStaff && b.isStaff) return 1;
-                return a.name.localeCompare(b.name);
-              });
-            
-            console.log(`Found ${onlinePlayersData.length} online players from API`);
-            setOnlinePlayers(onlinePlayersData);
-          } else {
-            console.log('No players found in API response');
-            setOnlinePlayers([]);
-          }
-        } else {
-          console.log('Players API call failed with status:', playersResponse.status);
-          setOnlinePlayers([]);
-        }
-      } catch (playersError) {
-        console.log('Error fetching online players:', playersError);
-        setOnlinePlayers([]);
-      }
+      // Fetch online players using improved method
+      const onlinePlayersData = await fetchOnlinePlayers(proxyUrl);
+      setOnlinePlayers(onlinePlayersData);
+      
+      console.log(`Displaying ${onlinePlayersData.length} online players`);
 
       // Fetch towns data
       const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
@@ -556,7 +616,7 @@ const ServerStatus = () => {
         </div>
       </div>
 
-      {/* Online Players Section - Only Real Data */}
+      {/* Online Players Section - Real Data with Debug Info */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Staff Members */}
         <Card className="bg-black/40 border-red-500/20 text-white">
@@ -570,6 +630,11 @@ const ServerStatus = () => {
             </CardTitle>
             <CardDescription className="text-gray-400">
               Currently online staff members
+              {serverData && onlinePlayers.length === 0 && (
+                <span className="text-yellow-400 ml-2">
+                  (API shows {serverData.stats.numOnlinePlayers} total online, but detailed data unavailable)
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -611,6 +676,11 @@ const ServerStatus = () => {
               <div className="text-center py-8 text-gray-400">
                 <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No staff members online</p>
+                {serverData && serverData.stats.numOnlinePlayers > 0 && (
+                  <p className="text-xs mt-2 text-yellow-400">
+                    Server reports {serverData.stats.numOnlinePlayers} players online, but individual player data is not accessible
+                  </p>
+                )}
               </div>
             )}
           </CardContent>
@@ -628,6 +698,11 @@ const ServerStatus = () => {
             </CardTitle>
             <CardDescription className="text-gray-400">
               Currently online players
+              {serverData && onlinePlayers.length === 0 && (
+                <span className="text-yellow-400 ml-2">
+                  (Server total: {serverData.stats.numOnlinePlayers})
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -667,7 +742,17 @@ const ServerStatus = () => {
             ) : (
               <div className="text-center py-8 text-gray-400">
                 <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No players online</p>
+                <p>Individual player data unavailable</p>
+                {serverData && serverData.stats.numOnlinePlayers > 0 && (
+                  <div className="text-xs mt-2 space-y-1">
+                    <p className="text-yellow-400">
+                      Server reports {serverData.stats.numOnlinePlayers} players online
+                    </p>
+                    <p className="text-gray-500">
+                      The EarthMC API may be limiting detailed player data access
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
