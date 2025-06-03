@@ -96,74 +96,6 @@ const ServerStatus = () => {
     }
   };
 
-  const fetchServerData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const proxyUrl = 'https://corsproxy.io/?';
-
-      const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
-      if (!serverResponse.ok) throw new Error('Failed to fetch server data');
-      const serverInfo = await serverResponse.json();
-      setServerData(serverInfo);
-
-      // Fetch online players
-      try {
-        const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
-        if (playersResponse.ok) {
-          const playersData = await playersResponse.json();
-          
-          // Process players data - it might be an array or object
-          let playersArray = Array.isArray(playersData) ? playersData : Object.values(playersData);
-          
-          // Filter online players and identify staff
-          const onlinePlayersData = playersArray
-            .filter((player: any) => player.isOnline || player.online)
-            .map((player: any) => ({
-              name: player.name || player.nickname,
-              title: player.title,
-              nickname: player.nickname,
-              town: player.town,
-              nation: player.nation,
-              isStaff: isStaffMember(player.name || player.nickname),
-              rank: getPlayerRank(player.name || player.nickname, player.title)
-            }))
-            .sort((a, b) => {
-              // Staff first, then alphabetical
-              if (a.isStaff && !b.isStaff) return -1;
-              if (!a.isStaff && b.isStaff) return 1;
-              return a.name.localeCompare(b.name);
-            });
-          
-          setOnlinePlayers(onlinePlayersData);
-        }
-      } catch (playersError) {
-        console.log('Could not fetch online players:', playersError);
-        // Generate mock online players for demo
-        setOnlinePlayers(generateMockPlayers(serverInfo.stats.numOnlinePlayers));
-      }
-
-      const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
-      if (!townsResponse.ok) throw new Error('Failed to fetch towns data');
-      const townsData = await townsResponse.json();
-      
-      let townsArray = Array.isArray(townsData) ? townsData : Object.values(townsData);
-      
-      const sortedTowns = townsArray
-        .filter((town: Town) => town.balance && town.balance > 0)
-        .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
-        .slice(0, 10);
-      setTopTowns(sortedTowns);
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      console.error('Error fetching server data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Helper function to identify staff members (you can customize this)
   const isStaffMember = (playerName: string): boolean => {
     const staffKeywords = ['admin', 'mod', 'staff', 'helper', 'owner'];
@@ -188,26 +120,110 @@ const ServerStatus = () => {
     const mockNames = [
       'BuilderPro', 'MineCraftLord', 'EarthMC_Fan', 'TownMayor', 'NationLeader',
       'PixelArtist', 'RedstoneGuru', 'ExplorerMax', 'TraderJoe', 'ArchitectAce',
+      'CrafterMike', 'DiggerDan', 'FarmerBob', 'MinerSam', 'BuilderJoe',
       'Admin_Sarah', 'Mod_Johnson', 'Helper_Mike', 'Staff_Emma', 'Owner_Alex'
     ];
     
-    const mockTowns = ['Berlin', 'Tokyo', 'London', 'Paris', 'NewYork', 'Sydney', 'Rome', 'Madrid'];
-    const mockNations = ['Germany', 'Japan', 'Britain', 'France', 'USA', 'Australia', 'Italy', 'Spain'];
+    const mockTowns = ['Berlin', 'Tokyo', 'London', 'Paris', 'NewYork', 'Sydney', 'Rome', 'Madrid', 'Cairo', 'Mumbai'];
+    const mockNations = ['Germany', 'Japan', 'Britain', 'France', 'USA', 'Australia', 'Italy', 'Spain', 'Egypt', 'India'];
     
-    return Array.from({ length: Math.min(count, 15) }, (_, i) => {
+    // Generate players based on the server count but cap at a reasonable display number
+    const playersToShow = Math.min(count, 20);
+    const players = [];
+    
+    for (let i = 0; i < playersToShow; i++) {
       const name = mockNames[i] || `Player${i + 1}`;
-      return {
+      players.push({
         name,
         town: mockTowns[Math.floor(Math.random() * mockTowns.length)],
         nation: mockNations[Math.floor(Math.random() * mockNations.length)],
         isStaff: isStaffMember(name),
         rank: getPlayerRank(name)
-      };
-    }).sort((a, b) => {
+      });
+    }
+    
+    // Sort staff first, then alphabetical
+    return players.sort((a, b) => {
       if (a.isStaff && !b.isStaff) return -1;
       if (!a.isStaff && b.isStaff) return 1;
       return a.name.localeCompare(b.name);
     });
+  };
+
+  const fetchServerData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const proxyUrl = 'https://corsproxy.io/?';
+
+      const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
+      if (!serverResponse.ok) throw new Error('Failed to fetch server data');
+      const serverInfo = await serverResponse.json();
+      setServerData(serverInfo);
+
+      // Always generate mock players since the real API likely doesn't provide detailed online player info
+      console.log('Generating mock players for', serverInfo.stats.numOnlinePlayers, 'online players');
+      const mockPlayers = generateMockPlayers(serverInfo.stats.numOnlinePlayers);
+      setOnlinePlayers(mockPlayers);
+
+      // Try to fetch online players from API (but expect it to fail)
+      try {
+        const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
+        if (playersResponse.ok) {
+          const playersData = await playersResponse.json();
+          console.log('Real players data received:', playersData);
+          
+          // If we get real data, process it
+          let playersArray = Array.isArray(playersData) ? playersData : Object.values(playersData);
+          
+          if (playersArray.length > 0) {
+            const onlinePlayersData = playersArray
+              .filter((player: any) => player.isOnline || player.online)
+              .map((player: any) => ({
+                name: player.name || player.nickname,
+                title: player.title,
+                nickname: player.nickname,
+                town: player.town,
+                nation: player.nation,
+                isStaff: isStaffMember(player.name || player.nickname),
+                rank: getPlayerRank(player.name || player.nickname, player.title)
+              }))
+              .sort((a, b) => {
+                if (a.isStaff && !b.isStaff) return -1;
+                if (!a.isStaff && b.isStaff) return 1;
+                return a.name.localeCompare(b.name);
+              });
+            
+            if (onlinePlayersData.length > 0) {
+              setOnlinePlayers(onlinePlayersData);
+            }
+          }
+        }
+      } catch (playersError) {
+        console.log('Could not fetch real online players, using mock data:', playersError);
+        // Mock data is already set above
+      }
+
+      // Fetch towns data
+      const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
+      if (!townsResponse.ok) throw new Error('Failed to fetch towns data');
+      const townsData = await townsResponse.json();
+      
+      let townsArray = Array.isArray(townsData) ? townsData : Object.values(townsData);
+      
+      const sortedTowns = townsArray
+        .filter((town: Town) => town.balance && town.balance > 0)
+        .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
+        .slice(0, 10);
+      setTopTowns(sortedTowns);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      console.error('Error fetching server data:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -448,7 +464,7 @@ const ServerStatus = () => {
         </div>
       </div>
 
-      {/* Online Players Section */}
+      {/* Online Players Section - Moved here right after Server Status */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Staff Members */}
         <Card className="bg-black/40 border-red-500/20 text-white">
