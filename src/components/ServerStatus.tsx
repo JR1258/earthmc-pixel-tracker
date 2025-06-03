@@ -240,103 +240,95 @@ const ServerStatus = () => {
 
       const proxyUrl = 'https://corsproxy.io/?';
       
-      // Try to fetch online players from the dedicated endpoint
-      try {
-        const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
-        
-        if (playersResponse.ok) {
-          const playersData = await playersResponse.json();
-          console.log('Players data received:', playersData);
+      // Try multiple endpoints to get player data
+      const endpoints = [
+        'https://api.earthmc.net/v3/aurora/players',
+        'https://api.earthmc.net/v3/aurora/players/all',
+        'https://api.earthmc.net/v3/aurora/online'
+      ];
+
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`Trying endpoint: ${endpoint}`);
+          const response = await fetch(`${proxyUrl}${encodeURIComponent(endpoint)}`);
           
-          // Handle different possible response structures
-          let onlinePlayersArray = [];
-          
-          if (Array.isArray(playersData)) {
-            onlinePlayersArray = playersData;
-          } else if (playersData.players && Array.isArray(playersData.players)) {
-            onlinePlayersArray = playersData.players;
-          } else if (typeof playersData === 'object') {
-            // If it's an object, convert values to array
-            onlinePlayersArray = Object.values(playersData);
-          }
-          
-          if (onlinePlayersArray.length > 0) {
-            const processedPlayers = onlinePlayersArray
-              .map((player: any) => {
-                const name = typeof player === 'string' ? player : (player.name || player.nickname || 'Unknown');
-                return {
-                  name,
-                  isStaff: isStaffMember(name),
-                  rank: getPlayerRank(name),
-                  isOnline: true,
-                  town: typeof player === 'object' ? player.town : undefined,
-                  nation: typeof player === 'object' ? player.nation : undefined
-                };
-              })
-              .filter(player => player.name !== 'Unknown') // Filter out invalid entries
-              .sort((a, b) => {
-                if (a.isStaff && !b.isStaff) return -1;
-                if (!a.isStaff && b.isStaff) return 1;
-                return a.name.localeCompare(b.name);
-              });
+          if (response.ok) {
+            const data = await response.json();
+            console.log(`Data from ${endpoint}:`, data);
             
-            console.log('Processed players:', processedPlayers);
-            setOnlinePlayers(processedPlayers);
-            setPlayerLoadingStatus('success');
-            return;
+            let playersArray = [];
+            
+            // Handle different response structures
+            if (Array.isArray(data)) {
+              playersArray = data;
+            } else if (data.players && Array.isArray(data.players)) {
+              playersArray = data.players;
+            } else if (data.online && Array.isArray(data.online)) {
+              playersArray = data.online;
+            } else if (typeof data === 'object' && data !== null) {
+              // Try to extract from various possible keys
+              const possibleKeys = ['online_players', 'onlinePlayers', 'playerList', 'users'];
+              for (const key of possibleKeys) {
+                if (data[key] && Array.isArray(data[key])) {
+                  playersArray = data[key];
+                  break;
+                }
+              }
+              
+              // If still no array, try to get from object values
+              if (playersArray.length === 0) {
+                const values = Object.values(data);
+                const arrayValue = values.find(val => Array.isArray(val));
+                if (arrayValue) {
+                  playersArray = arrayValue;
+                }
+              }
+            }
+            
+            if (playersArray.length > 0) {
+              console.log(`Found ${playersArray.length} players from ${endpoint}`);
+              
+              const processedPlayers = playersArray
+                .map((player: any) => {
+                  let name = '';
+                  if (typeof player === 'string') {
+                    name = player;
+                  } else if (player && typeof player === 'object') {
+                    name = player.name || player.nickname || player.username || player.displayName || '';
+                  }
+                  
+                  if (!name) return null;
+                  
+                  return {
+                    name,
+                    isStaff: isStaffMember(name),
+                    rank: getPlayerRank(name),
+                    isOnline: true,
+                    town: typeof player === 'object' ? player.town : undefined,
+                    nation: typeof player === 'object' ? player.nation : undefined
+                  };
+                })
+                .filter(player => player !== null)
+                .sort((a, b) => {
+                  if (a.isStaff && !b.isStaff) return -1;
+                  if (!a.isStaff && b.isStaff) return 1;
+                  return a.name.localeCompare(b.name);
+                });
+              
+              console.log('Processed players:', processedPlayers);
+              setOnlinePlayers(processedPlayers);
+              setPlayerLoadingStatus('success');
+              return;
+            }
           }
+        } catch (endpointError) {
+          console.log(`Endpoint ${endpoint} failed:`, endpointError);
+          continue;
         }
-      } catch (playersError) {
-        console.log('Players endpoint failed, trying alternative method:', playersError);
       }
 
-      // Alternative: Try to get server info that might include online players
-      try {
-        const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
-        
-        if (serverResponse.ok) {
-          const serverInfo = await serverResponse.json();
-          console.log('Server info for players:', serverInfo);
-          
-          // Check various possible locations for player data
-          let playersArray = null;
-          
-          if (serverInfo.players) playersArray = serverInfo.players;
-          else if (serverInfo.online_players) playersArray = serverInfo.online_players;
-          else if (serverInfo.onlinePlayers) playersArray = serverInfo.onlinePlayers;
-          
-          if (playersArray && Array.isArray(playersArray) && playersArray.length > 0) {
-            const processedPlayers = playersArray
-              .map((player: any) => {
-                const name = typeof player === 'string' ? player : (player.name || player.nickname || 'Unknown');
-                return {
-                  name,
-                  isStaff: isStaffMember(name),
-                  rank: getPlayerRank(name),
-                  isOnline: true,
-                  town: typeof player === 'object' ? player.town : undefined,
-                  nation: typeof player === 'object' ? player.nation : undefined
-                };
-              })
-              .filter(player => player.name !== 'Unknown')
-              .sort((a, b) => {
-                if (a.isStaff && !b.isStaff) return -1;
-                if (!a.isStaff && b.isStaff) return 1;
-                return a.name.localeCompare(b.name);
-              });
-            
-            console.log('Processed players from server info:', processedPlayers);
-            setOnlinePlayers(processedPlayers);
-            setPlayerLoadingStatus('success');
-            return;
-          }
-        }
-      } catch (serverError) {
-        console.log('Server info fetch failed:', serverError);
-      }
-
-      // If all methods fail, set empty array but don't show error
-      console.log('Could not fetch online players from any endpoint');
+      // If all endpoints failed, set error status
+      console.log('All player API endpoints failed or returned no data');
       setOnlinePlayers([]);
       setPlayerLoadingStatus('error');
     
@@ -775,16 +767,20 @@ const ServerStatus = () => {
             ) : (
               <div className="text-center py-8 text-gray-400">
                 <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No players detected as online</p>
-                {playerLoadingStatus === 'error' && (
-                  <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
-                    <p className="text-yellow-300 text-sm mb-1">
-                      API Player Detection Issues
-                    </p>
-                    <p className="text-gray-400 text-xs">
-                      Server reports {serverData?.stats.numOnlinePlayers || 0} online players but individual player data is not available.
-                    </p>
+                {playerLoadingStatus === 'error' ? (
+                  <div className="space-y-3">
+                    <p className="text-red-400">Player API Offline</p>
+                    <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
+                      <p className="text-red-300 text-sm mb-1">
+                        Unable to fetch player data
+                      </p>
+                      <p className="text-gray-400 text-xs">
+                        The player API endpoints are currently unavailable. Server reports {serverData?.stats.numOnlinePlayers || 0} players online.
+                      </p>
+                    </div>
                   </div>
+                ) : (
+                  <p>No players online</p>
                 )}
               </div>
             )}
