@@ -257,154 +257,103 @@ const ServerStatus = () => {
         throw new Error('No players data received');
       }
 
-      // Take a subset of players to check (to avoid overwhelming the API)
-      // We'll check the first 200 players and see who's online
-      const playersToCheck = allPlayers.slice(0, 200).map(p => p.name || p.uuid);
+      // Strategy: Check players in larger, randomized batches to find online ones
+      const batchSize = 150;
+      const maxBatches = 10; // Check up to 1500 players total
+      const foundOnlinePlayers: any[] = [];
       
-      // Now do a POST request to get detailed info for these players
-      const detailResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: playersToCheck,
-          template: {
-            name: true,
-            uuid: true,
-            title: true,
-            town: true,
-            nation: true,
-            status: true
-          }
-        })
-      });
-
-      if (!detailResponse.ok) {
-        throw new Error('Failed to fetch detailed player data');
-      }
-
-      const detailedPlayers = await detailResponse.json();
-      console.log('Detailed players data received:', detailedPlayers);
-
-      // Filter for only online players
-      const onlinePlayersData = detailedPlayers.filter((player: any) => 
-        player.status && player.status.isOnline === true
-      );
-
-      console.log('Found online players:', onlinePlayersData.length);
-
-      if (onlinePlayersData.length > 0) {
-        const processedPlayers = onlinePlayersData
-          .map((player: any) => ({
-            name: player.name,
-            isStaff: isStaffMember(player.name),
-            rank: getPlayerRank(player.name, player.title),
-            isOnline: true,
-            town: player.town?.name,
-            nation: player.nation?.name,
-            title: player.title
-          }))
-          .sort((a, b) => {
-            if (a.isStaff && !b.isStaff) return -1;
-            if (!a.isStaff && b.isStaff) return 1;
-            return a.name.localeCompare(b.name);
+      // Shuffle the array to get a random sample rather than just the first players
+      const shuffledPlayers = [...allPlayers].sort(() => Math.random() - 0.5);
+      
+      for (let batch = 0; batch < maxBatches; batch++) {
+        const startIndex = batch * batchSize;
+        const endIndex = Math.min(startIndex + batchSize, shuffledPlayers.length);
+        const batchPlayers = shuffledPlayers.slice(startIndex, endIndex).map(p => p.name || p.uuid);
+        
+        try {
+          console.log(`Checking batch ${batch + 1}/${maxBatches} (${batchPlayers.length} players)...`);
+          
+          const batchResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              query: batchPlayers,
+              template: {
+                name: true,
+                title: true,
+                town: true,
+                nation: true,
+                status: true
+              }
+            })
           });
 
-        console.log('Processed online players:', processedPlayers);
-        setOnlinePlayers(processedPlayers);
-        setPlayerLoadingStatus('success');
-        return;
-      }
+          if (batchResponse.ok) {
+            const batchData = await batchResponse.json();
+            const batchOnline = batchData.filter((player: any) => 
+              player.status && player.status.isOnline === true
+            );
 
-      // If no online players found in our sample, try a different approach
-      console.log('No online players found in sample, trying alternative method...');
-      
-      // Alternative: Check if server data has online player count and try random sampling
-      if (serverData?.stats.numOnlinePlayers && serverData.stats.numOnlinePlayers > 0) {
-        // Try checking more players in batches
-        const batchSize = 100;
-        const maxBatches = 5; // Check up to 500 players total
-        
-        for (let batch = 0; batch < maxBatches; batch++) {
-          const startIndex = batch * batchSize;
-          const endIndex = Math.min(startIndex + batchSize, allPlayers.length);
-          const batchPlayers = allPlayers.slice(startIndex, endIndex).map(p => p.name || p.uuid);
-          
-          try {
-            const batchResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                query: batchPlayers,
-                template: {
-                  name: true,
-                  title: true,
-                  town: true,
-                  nation: true,
-                  status: true
-                }
-              })
-            });
-
-            if (batchResponse.ok) {
-              const batchData = await batchResponse.json();
-              const batchOnline = batchData.filter((player: any) => 
-                player.status && player.status.isOnline === true
-              );
-
-              if (batchOnline.length > 0) {
-                const processedBatch = batchOnline.map((player: any) => ({
-                  name: player.name,
-                  isStaff: isStaffMember(player.name),
-                  rank: getPlayerRank(player.name, player.title),
-                  isOnline: true,
-                  town: player.town?.name,
-                  nation: player.nation?.name,
-                  title: player.title
-                }));
-
-                setOnlinePlayers(prevPlayers => {
-                  const combined = [...prevPlayers, ...processedBatch];
-                  return combined
-                    .filter((player, index, self) => 
-                      index === self.findIndex(p => p.name === player.name)
-                    )
-                    .sort((a, b) => {
-                      if (a.isStaff && !b.isStaff) return -1;
-                      if (!a.isStaff && b.isStaff) return 1;
-                      return a.name.localeCompare(b.name);
-                    });
-                });
-                
-                console.log(`Found ${batchOnline.length} online players in batch ${batch + 1}`);
+            if (batchOnline.length > 0) {
+              foundOnlinePlayers.push(...batchOnline);
+              console.log(`Found ${batchOnline.length} online players in batch ${batch + 1}, total: ${foundOnlinePlayers.length}`);
+              
+              // If we've found enough players for initial display, we can stop early
+              if (foundOnlinePlayers.length >= 30) {
+                console.log('Found enough online players for initial display');
+                break;
               }
             }
-
-            // Small delay between batches to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 200));
-          } catch (batchError) {
-            console.log(`Batch ${batch + 1} failed:`, batchError);
+          } else {
+            console.log(`Batch ${batch + 1} request failed:`, batchResponse.status);
           }
-        }
 
-        setPlayerLoadingStatus('success');
-        return;
+          // Delay between batches to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (batchError) {
+          console.log(`Batch ${batch + 1} failed:`, batchError);
+        }
       }
 
-      // If all methods fail
-      console.log('Could not find any online players');
-      setOnlinePlayers([]);
-      setPlayerLoadingStatus('error');
-      
-    } catch (error) {
-      console.error('Error in fetchOnlinePlayers:', error);
-      setOnlinePlayers([]);
-      setPlayerLoadingStatus('error');
+    if (foundOnlinePlayers.length > 0) {
+      const processedPlayers = foundOnlinePlayers
+        .map((player: any) => ({
+          name: player.name,
+          isStaff: isStaffMember(player.name),
+          rank: getPlayerRank(player.name, player.title),
+          isOnline: true,
+          town: player.town?.name,
+          nation: player.nation?.name,
+          title: player.title
+        }))
+        .filter((player, index, self) => 
+          index === self.findIndex(p => p.name === player.name) // Remove duplicates
+        )
+        .sort((a, b) => {
+          if (a.isStaff && !b.isStaff) return -1;
+          if (!a.isStaff && b.isStaff) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+      console.log('Final processed online players:', processedPlayers.length);
+      setOnlinePlayers(processedPlayers);
+      setPlayerLoadingStatus('success');
+      return;
     }
-  }, [isStaffMember, getPlayerRank, serverData]);
+
+    // If no online players found
+    console.log('Could not find any online players');
+    setOnlinePlayers([]);
+    setPlayerLoadingStatus('error');
+    
+  } catch (error) {
+    console.error('Error in fetchOnlinePlayers:', error);
+    setOnlinePlayers([]);
+    setPlayerLoadingStatus('error');
+  }
+}, [isStaffMember, getPlayerRank]);
 
   // Enhanced fetchServerData function
   const fetchServerData = useCallback(async () => {
@@ -873,7 +822,7 @@ const ServerStatus = () => {
             ) : regularPlayers.length > 0 ? (
               <>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {regularPlayers.slice(0, Math.min(playerLimit, 20)).map((player, index) => (
+                  {regularPlayers.slice(0, displayLimit).map((player, index) => (
                     <div
                       key={player.name + index}
                       className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
@@ -895,11 +844,36 @@ const ServerStatus = () => {
                   ))}
                 </div>
                 
+                {/* Load More Button */}
+                {regularPlayers.length > displayLimit && (
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={() => setDisplayLimit(prev => prev + 20)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm transition-colors"
+                    >
+                      Show More ({regularPlayers.length - displayLimit} remaining)
+                    </button>
+                  </div>
+                )}
+                
+                {/* Fetch More Players Button */}
+                {displayLimit >= regularPlayers.length && regularPlayers.length > 0 && (
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={loadMoreOnlinePlayers}
+                      disabled={isLoadingMore}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm transition-colors"
+                    >
+                      {isLoadingMore ? 'Loading More Players...' : 'Load More Players'}
+                    </button>
+                  </div>
+                )}
+                
                 {/* Status message */}
                 {playerLoadingStatus === 'success' && regularPlayers.length > 0 && (
                   <div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
                     <p className="text-green-300 text-sm">
-                      Showing {regularPlayers.length} players
+                      Showing {Math.min(displayLimit, regularPlayers.length)} of {regularPlayers.length} players
                     </p>
                     <p className="text-gray-400 text-xs">
                       Data from server API
