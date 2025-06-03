@@ -59,6 +59,91 @@ const ServerStatus = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
 
+  // Pagination helper functions - MOVED BEFORE USE
+  const getPaginatedData = (data: Player[], currentPage: number) => {
+    const startIndex = (currentPage - 1) * PLAYERS_PER_PAGE;
+    const endIndex = startIndex + PLAYERS_PER_PAGE;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (totalItems: number) => {
+    return Math.ceil(totalItems / PLAYERS_PER_PAGE);
+  };
+
+  const PaginationControls = ({ 
+    currentPage, 
+    totalPages, 
+    onPageChange, 
+    totalItems, 
+    itemType 
+  }: {
+    currentPage: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+    totalItems: number;
+    itemType: string;
+  }) => {
+    if (totalPages <= 1) return null;
+
+    const startItem = (currentPage - 1) * PLAYERS_PER_PAGE + 1;
+    const endItem = Math.min(currentPage * PLAYERS_PER_PAGE, totalItems);
+
+    return (
+      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-700/50">
+        <div className="text-xs text-gray-400">
+          Showing {startItem}-{endItem} of {totalItems} {itemType}
+        </div>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            Previous
+          </button>
+          
+          {/* Page numbers */}
+          <div className="flex items-center space-x-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => onPageChange(pageNum)}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    currentPage === pageNum
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const loadHistoricalData = async () => {
     try {
       const last7Days = await getLast7Days();
