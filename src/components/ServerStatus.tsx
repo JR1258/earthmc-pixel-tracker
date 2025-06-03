@@ -198,73 +198,30 @@ const ServerStatus = () => {
 
       const proxyUrl = 'https://corsproxy.io/?';
 
+      // Fetch main server data which includes online players
       const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
       if (!serverResponse.ok) throw new Error('Failed to fetch server data');
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
-      // Try to fetch online players from API using POST method like PlayerLookup
-      try {
-        const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: []
-          })
-        });
-
-        if (playersResponse.ok) {
-          const responseText = await playersResponse.text();
-          
-          let playersData;
-          try {
-            playersData = JSON.parse(responseText);
-          } catch (jsonError) {
-            throw new Error('Invalid response format from API');
-          }
-          
-          console.log('Real players data received:', playersData);
-          
-          const playerKeys = Object.keys(playersData);
-          
-          if (playerKeys.length > 0) {
-            const onlinePlayersData = playerKeys
-              .map(key => {
-                const player = playersData[key];
-                if (player && player.status && player.status.isOnline) {
-                  return {
-                    name: player.name || key,
-                    title: player.title,
-                    nickname: player.nickname,
-                    town: player.town?.name,
-                    nation: player.nation?.name,
-                    isStaff: isStaffMember(player.name || key),
-                    rank: getPlayerRank(player.name || key, player.title)
-                  };
-                }
-                return null;
-              })
-              .filter(player => player !== null)
-              .sort((a, b) => {
-                if (a.isStaff && !b.isStaff) return -1;
-                if (!a.isStaff && b.isStaff) return 1;
-                return a.name.localeCompare(b.name);
-              });
-            
-            console.log(`Found ${onlinePlayersData.length} online players from API`);
-            setOnlinePlayers(onlinePlayersData);
-          } else {
-            console.log('No players found in API response');
-            setOnlinePlayers([]);
-          }
-        } else {
-          console.log('Players API call failed with status:', playersResponse.status);
-          setOnlinePlayers([]);
-        }
-      } catch (playersError) {
-        console.log('Error fetching online players:', playersError);
+      // Get online players from the main server response
+      if (serverInfo.players && Array.isArray(serverInfo.players)) {
+        const onlinePlayersData = serverInfo.players
+          .map((playerName: string) => ({
+            name: playerName,
+            isStaff: isStaffMember(playerName),
+            rank: getPlayerRank(playerName)
+          }))
+          .sort((a, b) => {
+            if (a.isStaff && !b.isStaff) return -1;
+            if (!a.isStaff && b.isStaff) return 1;
+            return a.name.localeCompare(b.name);
+          });
+        
+        console.log(`Found ${onlinePlayersData.length} online players from server data`);
+        setOnlinePlayers(onlinePlayersData);
+      } else {
+        console.log('No players array found in server response');
         setOnlinePlayers([]);
       }
 
