@@ -1,497 +1,203 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Search, User, MapPin, Crown, Users, AlertCircle, Loader2, DollarSign, Calendar, Clock } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Users, Crown, Activity, Search, Loader2, AlertCircle } from 'lucide-react';
 
-// Add custom scrollbar styles
-const customScrollbarStyles = `
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(31, 41, 55, 0.5);
-    border-radius: 4px;
-    margin: 8px 0;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: linear-gradient(to bottom, rgba(251, 191, 36, 0.6), rgba(245, 158, 11, 0.6));
-    border-radius: 4px;
-    border: 1px solid rgba(31, 41, 55, 0.5);
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(to bottom, rgba(251, 191, 36, 0.8), rgba(245, 158, 11, 0.8));
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-`;
-
-interface PlayerData {
+interface Player {
   name: string;
-  uuid: string;
   title?: string;
-  surname?: string;
-  formattedName?: string;
-  about?: string;
-  town?: {
-    name: string;
-    uuid: string;
-  };
-  nation?: {
-    name: string;
-    uuid: string;
-  };
-  timestamps: {
-    registered: number;
-    joinedTownAt?: number;
-    lastOnline?: number;
-  };
-  status: {
-    isOnline: boolean;
-    isNPC: boolean;
-    isMayor: boolean;
-    isKing: boolean;
-    hasTown: boolean;
-    hasNation: boolean;
-  };
-  stats: {
-    balance: number;
-    numFriends: number;
-  };
-  ranks: {
-    townRanks: string[];
-    nationRanks: string[];
-  };
-  friends?: Array<{ name: string; uuid: string }>;
+  nickname?: string;
+  town?: string;
+  nation?: string;
+  isStaff?: boolean;
+  rank?: string;
+  lastOnline?: number;
+  isOnline?: boolean;
 }
 
 const PlayerLookup = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [playerData, setPlayerData] = useState<PlayerData | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [playerData, setPlayerData] = useState<Player | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
 
-  const searchPlayer = async () => {
-    if (!searchTerm.trim()) return;
+  useEffect(() => {
+    // Reset error state when searchQuery changes
+    setError(null);
+  }, [searchQuery]);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setLoading(true);
+    setError(null);
+    setPlayerData(null);
 
     try {
-      setLoading(true);
-      setError(null);
-      setHasSearched(true);
-
-      // Use a different CORS proxy that better handles POST requests
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`;
+      const proxyUrl = 'https://corsproxy.io/?';
+      const response = await fetch(`${proxyUrl}${encodeURIComponent(`https://api.earthmc.net/v3/aurora/players/${encodeURIComponent(searchQuery.trim())}`)}`);
       
-      const response = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: [searchTerm.trim()]
-        })
-      });
-
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const responseText = await response.text();
-      
-      // Check if response is valid JSON
-      let playersData;
-      try {
-        playersData = JSON.parse(responseText);
-      } catch (jsonError) {
-        throw new Error('Invalid response format from API');
-      }
-      
-      // The API returns an object with player names/UUIDs as keys
-      const playerKeys = Object.keys(playersData);
-      if (playerKeys.length === 0) {
         throw new Error('Player not found');
       }
 
-      const playerKey = playerKeys[0];
-      const player = playersData[playerKey];
-      
-      if (!player || player.error) {
-        throw new Error('Player not found or invalid data');
-      }
-
-      setPlayerData(player);
+      const data = await response.json();
+      setPlayerData(data);
     } catch (err) {
-      console.error('Player lookup error:', err);
-      setError(err instanceof Error ? err.message : 'Player not found');
-      setPlayerData(null);
+      setError(err instanceof Error ? err.message : 'Failed to fetch player data');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    searchPlayer();
+  const renderPlayerHead = (playerName: string) => {
+    return (
+      <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+        <span className="text-white font-bold text-lg">
+          {playerName.slice(0, 2).toUpperCase()}
+        </span>
+      </div>
+    );
   };
 
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const formatDateWithTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const getMinecraftHeadUrl = (username: string) => {
-    return `https://mc-heads.net/avatar/${username}/64`;
-  };
-
-  const getTimeAgo = (timestamp: number) => {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor(diff / (1000 * 60));
-
-    if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
-    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-    if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-    return 'Just now';
-  };
+  const StatCard = ({ icon, label, value, color = "text-blue-400" }: {
+    icon: React.ReactNode;
+    label: string;
+    value: string | number;
+    color?: string;
+  }) => (
+    <div className="bg-gray-800/50 rounded-lg p-4">
+      <div className="flex items-center space-x-3">
+        <div className={color}>{icon}</div>
+        <div>
+          <div className="text-sm text-gray-400">{label}</div>
+          <div className="font-semibold text-white">{value}</div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
-    <>
-      <style dangerouslySetInnerHTML={{ __html: customScrollbarStyles }} />
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Search Card */}
-        <Card className="bg-black/40 border-green-500/20 text-white">
-          <CardHeader>
-            <CardTitle className="text-green-400 flex items-center space-x-2">
-              <User className="w-5 h-5" />
-              <span>Player Lookup</span>
-            </CardTitle>
-            <CardDescription className="text-gray-400">
-              Search for any player on EarthMC to see their detailed information
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="flex gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Enter player username or UUID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 bg-gray-800/50 border-gray-600 text-white"
-                  disabled={loading}
+    <div className="space-y-6">
+      <Card className="bg-black/40 border-green-500/20 text-white">
+        <CardHeader>
+          <CardTitle className="text-green-400 flex items-center space-x-2">
+            <Search className="w-5 h-5" />
+            <span>Player Lookup</span>
+          </CardTitle>
+          <CardDescription className="text-gray-400">
+            Search for player information and statistics
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSearch} className="flex space-x-4 mb-6">
+            <Input
+              type="text"
+              placeholder="Enter player name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-gray-800/50 border-gray-600 text-white placeholder-gray-400"
+            />
+            <Button
+              type="submit"
+              disabled={loading || !searchQuery.trim()}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Search className="w-4 h-4" />
+              )}
+            </Button>
+          </form>
+
+          {error && (
+            <div className="bg-red-900/20 border border-red-500/20 rounded-lg p-4 mb-6">
+              <div className="flex items-center space-x-2 text-red-400">
+                <AlertCircle className="w-5 h-5" />
+                <span>{error}</span>
+              </div>
+            </div>
+          )}
+
+          {playerData && (
+            <div className="space-y-6">
+              <div className="flex items-start space-x-6 p-6 bg-gray-800/30 rounded-lg">
+                {renderPlayerHead(playerData.name)}
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold text-white mb-2">{playerData.name}</h2>
+                  {playerData.title && (
+                    <div className="text-yellow-400 mb-2">{playerData.title}</div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className="bg-blue-600/20 text-blue-300">
+                      {playerData.isOnline ? 'Online' : 'Offline'}
+                    </Badge>
+                    {playerData.town && (
+                      <Badge className="bg-green-600/20 text-green-300">
+                        {playerData.town}
+                      </Badge>
+                    )}
+                    {playerData.nation && (
+                      <Badge className="bg-purple-600/20 text-purple-300">
+                        {playerData.nation}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <StatCard
+                  icon={<Users className="w-5 h-5" />}
+                  label="Town"
+                  value={playerData.town || 'None'}
+                  color="text-green-400"
+                />
+                <StatCard
+                  icon={<Crown className="w-5 h-5" />}
+                  label="Nation"
+                  value={playerData.nation || 'None'}
+                  color="text-purple-400"
+                />
+                <StatCard
+                  icon={<Activity className="w-5 h-5" />}
+                  label="Status"
+                  value={playerData.isOnline ? 'Online' : 'Offline'}
+                  color={playerData.isOnline ? "text-green-400" : "text-red-400"}
                 />
               </div>
-              <Button 
-                type="submit" 
-                disabled={loading || !searchTerm.trim()}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Search className="w-4 h-4" />
-                )}
-                Search
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
 
-        {/* Results Card */}
-        {hasSearched && (
-          <Card className="bg-black/40 border-green-500/20 text-white">
-            <CardHeader>
-              <CardTitle className="text-green-400">Search Results</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {error ? (
-                <div className="flex items-center space-x-2 text-red-400 p-4 bg-red-900/20 rounded-lg">
-                  <AlertCircle className="w-5 h-5" />
-                  <span>{error}</span>
-                </div>
-              ) : playerData ? (
-                <div className="space-y-6">
-                  {/* Player Header */}
-                  <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-700 flex items-center justify-center">
-                        <img
-                          src={getMinecraftHeadUrl(playerData.name)}
-                          alt={`${playerData.name}'s head`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            // Fallback to icon if image fails to load
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextElementSibling!.style.display = 'flex';
-                          }}
-                        />
-                        <User className="w-6 h-6 text-white hidden" />
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-bold">
-                          {playerData.formattedName || playerData.name}
-                        </h3>
-                        <div className="flex items-center space-x-2">
-                          {playerData.status?.isOnline && (
-                            <Badge className="bg-green-600">Online</Badge>
-                          )}
-                          {playerData.status && !playerData.status.isOnline && (
-                            <Badge className="bg-gray-600">Offline</Badge>
-                          )}
-                          {playerData.status?.isKing && (
-                            <Badge className="bg-purple-600">King</Badge>
-                          )}
-                          {playerData.status?.isMayor && (
-                            <Badge className="bg-blue-600">Mayor</Badge>
-                          )}
-                          {playerData.status?.isNPC && (
-                            <Badge className="bg-orange-600">NPC</Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Player Details */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-4">
-                      {playerData.town && (
-                        <div className="p-4 bg-gray-800/50 rounded-lg">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <MapPin className="w-4 h-4 text-blue-400" />
-                            <span className="text-sm font-semibold text-blue-400">Town</span>
-                          </div>
-                          <div className="text-lg font-bold">{playerData.town.name}</div>
-                          {playerData.ranks?.townRanks && playerData.ranks.townRanks.length > 0 && (
-                            <div className="text-sm text-gray-400">
-                              Ranks: {playerData.ranks.townRanks.join(', ')}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
+              {playerData.town && (
+                <div>
+                  <h3 className="text-xl font-semibold text-white mb-4">Town Information</h3>
+                  <div className="bg-gray-800/30 rounded-lg p-4">
+                    <div className="text-gray-300">
+                      Member of <span className="text-green-400 font-semibold">{playerData.town}</span>
                       {playerData.nation && (
-                        <div className="p-4 bg-gray-800/50 rounded-lg">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <Crown className="w-4 h-4 text-purple-400" />
-                            <span className="text-sm font-semibold text-purple-400">Nation</span>
-                          </div>
-                          <div className="text-lg font-bold">{playerData.nation.name}</div>
-                          {playerData.ranks?.nationRanks && playerData.ranks.nationRanks.length > 0 && (
-                            <div className="text-sm text-gray-400">
-                              Ranks: {playerData.ranks.nationRanks.join(', ')}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="p-4 bg-gray-800/50 rounded-lg">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <DollarSign className="w-4 h-4 text-yellow-400" />
-                          <span className="text-sm font-semibold text-yellow-400">Gold Balance</span>
-                        </div>
-                        <div className="text-lg font-bold text-yellow-400">{(playerData.stats?.balance || 0).toLocaleString()} Gold</div>
-                      </div>
-
-                      {/* Enhanced Friends Section with proper hover */}
-                      <div className="p-4 bg-gray-800/50 rounded-lg relative">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <Users className="w-4 h-4 text-yellow-400" />
-                          <span className="text-sm font-semibold text-yellow-400">Friends</span>
-                        </div>
-                        
-                        {/* Friends count with hover trigger */}
-                        <div 
-                          className="text-lg font-bold cursor-pointer hover:text-yellow-400 transition-colors relative group"
-                          style={{ zIndex: 1 }}
-                        >
-                          {playerData.stats?.numFriends || 0}
-                          
-                          {/* Beautiful Friends Tooltip */}
-                          {playerData.friends && playerData.friends.length > 0 && (
-                            <div className="absolute bottom-full left-0 mb-3 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto" style={{ zIndex: 50 }}>
-                              {/* Hover bridge - invisible area to maintain hover */}
-                              <div className="absolute top-full w-full h-3"></div>
-                              
-                              <div className="w-80 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-yellow-400/30 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-lg">
-                                {/* Header */}
-                                <div className="px-5 py-4 bg-gradient-to-r from-yellow-500/20 via-yellow-400/20 to-amber-500/20 border-b border-yellow-400/20">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-3">
-                                      <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-lg flex items-center justify-center">
-                                        <Users className="w-4 h-4 text-gray-900" />
-                                      </div>
-                                      <div>
-                                        <h4 className="text-sm font-bold text-yellow-400">Friends List</h4>
-                                        <p className="text-xs text-gray-400">{playerData.friends.length} total friends</p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                                
-                                {/* Friends List Container */}
-                                <div className="max-h-72 overflow-y-auto custom-scrollbar">
-                                  <div className="p-2">
-                                    {playerData.friends.map((friend, index) => (
-                                      <div 
-                                        key={friend.uuid} 
-                                        className="flex items-center space-x-3 p-3 rounded-xl hover:bg-gradient-to-r hover:from-yellow-500/10 hover:to-amber-500/10 transition-all duration-200 group/friend border border-transparent hover:border-yellow-400/20"
-                                      >
-                                        {/* Friend Avatar */}
-                                        <div className="relative flex-shrink-0">
-                                          <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-700 border-2 border-gray-600 group-hover/friend:border-yellow-400/50 transition-all duration-200 shadow-lg">
-                                            <img
-                                              src={getMinecraftHeadUrl(friend.name)}
-                                              alt={friend.name}
-                                              className="w-full h-full object-cover"
-                                              onError={(e) => {
-                                                e.currentTarget.style.display = 'none';
-                                                e.currentTarget.nextElementSibling!.style.display = 'flex';
-                                              }}
-                                            />
-                                            <div className="w-full h-full bg-gray-700 items-center justify-center hidden">
-                                              <User className="w-5 h-5 text-gray-400" />
-                                            </div>
-                                          </div>
-                                          
-                                          {/* Status indicator */}
-                                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-gray-500 rounded-full border-2 border-gray-900 shadow-sm">
-                                            <div className="w-full h-full rounded-full bg-gradient-to-br from-gray-400 to-gray-600"></div>
-                                          </div>
-                                        </div>
-                                        
-                                        {/* Friend Info */}
-                                        <div className="flex-1 min-w-0">
-                                          <h5 className="text-sm font-semibold text-white group-hover/friend:text-yellow-400 transition-colors truncate">
-                                            {friend.name}
-                                          </h5>
-                                        </div>
-                                        
-                                        {/* Friend Number */}
-                                        <div className="text-xs font-medium text-gray-500 bg-gray-700/50 px-2 py-1 rounded-md">
-                                          #{index + 1}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                                
-                                {/* Footer */}
-                                <div className="px-5 py-3 bg-gradient-to-r from-gray-800/80 to-gray-700/80 border-t border-gray-600/30">
-                                  <div className="flex items-center justify-between text-xs text-gray-400">
-                                    <span>Scroll to view all friends</span>
-                                    <span className="text-yellow-400">●</span>
-                                  </div>
-                                </div>
-                                
-                                {/* Arrow pointer */}
-                                <div className="absolute top-full left-8 w-0 h-0 border-l-[12px] border-r-[12px] border-t-[12px] border-l-transparent border-r-transparent border-t-yellow-400/30"></div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Additional Info */}
-                  {playerData.about && (
-                    <div className="p-4 bg-gray-800/50 rounded-lg">
-                      <div className="text-sm font-semibold text-gray-400 mb-2">About</div>
-                      <div className="text-sm">{playerData.about}</div>
-                    </div>
-                  )}
-
-                  {/* Enhanced Timeline */}
-                  <div className="p-4 bg-gray-800/50 rounded-lg">
-                    <div className="flex items-center space-x-2 mb-4">
-                      <Calendar className="w-4 h-4 text-blue-400" />
-                      <span className="text-sm font-semibold text-blue-400">Timeline</span>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="flex items-start space-x-3 p-3 bg-gray-700/50 rounded-lg">
-                        <div className="w-2 h-2 bg-green-400 rounded-full mt-2"></div>
-                        <div>
-                          <div className="text-sm font-medium text-green-400">Account Created</div>
-                          <div className="text-sm text-gray-300">{formatDate(playerData.timestamps.registered)}</div>
-                        </div>
-                      </div>
-                      
-                      {playerData.timestamps.joinedTownAt && (
-                        <div className="flex items-start space-x-3 p-3 bg-gray-700/50 rounded-lg">
-                          <div className="w-2 h-2 bg-blue-400 rounded-full mt-2"></div>
-                          <div>
-                            <div className="text-sm font-medium text-blue-400">Joined Current Town</div>
-                            <div className="text-sm text-gray-300">{formatDate(playerData.timestamps.joinedTownAt)}</div>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {playerData.timestamps.lastOnline && (
-                        <div className="flex items-start space-x-3 p-3 bg-gray-700/50 rounded-lg">
-                          <div className="w-2 h-2 bg-yellow-400 rounded-full mt-2"></div>
-                          <div>
-                            <div className="text-sm font-medium text-yellow-400 flex items-center space-x-2">
-                              <Clock className="w-3 h-3" />
-                              <span>Last Seen</span>
-                            </div>
-                            <div className="text-sm text-gray-300">{formatDateWithTime(playerData.timestamps.lastOnline)}</div>
-                            <div className="text-xs text-gray-400">{getTimeAgo(playerData.timestamps.lastOnline)}</div>
-                          </div>
-                        </div>
+                        <span> in the nation of <span className="text-purple-400 font-semibold">{playerData.nation}</span></span>
                       )}
                     </div>
                   </div>
                 </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Help Card */}
-        <Card className="bg-black/40 border-gray-500/20 text-white">
-          <CardHeader>
-            <CardTitle className="text-gray-400 text-sm">How to use Player Lookup</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-gray-400 space-y-2">
-              <p>• Enter any Minecraft username or UUID to search</p>
-              <p>• View detailed player information including town, nation, and ranks</p>
-              <p>• See player balance, friends, and activity timeline</p>
-              <p>• Hover over the friends count to see the full friends list</p>
-              <p>• Data is fetched in real-time from the EarthMC API</p>
-              <p>• Note: Using CORS proxy for browser compatibility</p>
+              )}
             </div>
-          </CardContent>
-        </Card>
-      </div>
-    </>
+          )}
+
+          {!playerData && !loading && !error && (
+            <div className="text-center py-12 text-gray-400">
+              <Search className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg">Search for a player to view their information</p>
+              <p className="text-sm mt-2">Enter a player name in the search box above</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
