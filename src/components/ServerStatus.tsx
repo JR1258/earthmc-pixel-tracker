@@ -58,6 +58,10 @@ const ServerStatus = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
+  
+  // Add these new state variables for pagination and limits
+  const [playerLimit, setPlayerLimit] = useState(50); // Limit to 50 players initially
+  const [showAllPlayers, setShowAllPlayers] = useState(false);
 
   const loadHistoricalData = async () => {
     try {
@@ -198,45 +202,83 @@ const ServerStatus = () => {
 
       const proxyUrl = 'https://corsproxy.io/?';
 
-      // Fetch main server data which includes online players
+      // Fetch main server data
       const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
       if (!serverResponse.ok) throw new Error('Failed to fetch server data');
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
-      // Get online players from the main server response
+      // Process players with safety limits
       if (serverInfo.players && Array.isArray(serverInfo.players)) {
-        const onlinePlayersData = serverInfo.players
-          .map((playerName: string) => ({
-            name: playerName,
-            isStaff: isStaffMember(playerName),
-            rank: getPlayerRank(playerName)
-          }))
-          .sort((a, b) => {
-            if (a.isStaff && !b.isStaff) return -1;
-            if (!a.isStaff && b.isStaff) return 1;
-            return a.name.localeCompare(b.name);
-          });
+        console.log(`Total players found: ${serverInfo.players.length}`);
         
-        console.log(`Found ${onlinePlayersData.length} online players from server data`);
+        // Limit the number of players processed to prevent crashes
+        const playersToProcess = showAllPlayers 
+          ? serverInfo.players 
+          : serverInfo.players.slice(0, playerLimit);
+        
+        // Process players in chunks to prevent blocking the UI
+        const processPlayersInChunks = (players: string[], chunkSize = 25) => {
+          return new Promise<Player[]>((resolve) => {
+            const result: Player[] = [];
+            let index = 0;
+            
+            const processChunk = () => {
+              const chunk = players.slice(index, index + chunkSize);
+              
+              chunk.forEach(playerName => {
+                result.push({
+                  name: playerName,
+                  isStaff: isStaffMember(playerName),
+                  rank: getPlayerRank(playerName)
+                });
+              });
+              
+              index += chunkSize;
+              
+              if (index < players.length) {
+                // Use setTimeout to prevent blocking the main thread
+                setTimeout(processChunk, 0);
+              } else {
+                // Sort after all processing is done
+                result.sort((a, b) => {
+                  if (a.isStaff && !b.isStaff) return -1;
+                  if (!a.isStaff && b.isStaff) return 1;
+                  return a.name.localeCompare(b.name);
+                });
+                resolve(result);
+              }
+            };
+            
+            processChunk();
+          });
+        };
+        
+        const onlinePlayersData = await processPlayersInChunks(playersToProcess);
+        console.log(`Processed ${onlinePlayersData.length} players`);
         setOnlinePlayers(onlinePlayersData);
       } else {
         console.log('No players array found in server response');
         setOnlinePlayers([]);
       }
 
-      // Fetch towns data
-      const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
-      if (!townsResponse.ok) throw new Error('Failed to fetch towns data');
-      const townsData = await townsResponse.json();
-      
-      let townsArray = Array.isArray(townsData) ? townsData : Object.values(townsData);
-      
-      const sortedTowns = townsArray
-        .filter((town: Town) => town.balance && town.balance > 0)
-        .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
-        .slice(0, 10);
-      setTopTowns(sortedTowns);
+      // Fetch towns data with error handling
+      try {
+        const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
+        if (!townsResponse.ok) throw new Error('Failed to fetch towns data');
+        const townsData = await townsResponse.json();
+        
+        let townsArray = Array.isArray(townsData) ? townsData : Object.values(townsData);
+        
+        const sortedTowns = townsArray
+          .filter((town: Town) => town.balance && town.balance > 0)
+          .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
+          .slice(0, 10);
+        setTopTowns(sortedTowns);
+      } catch (townError) {
+        console.error('Error fetching towns:', townError);
+        setTopTowns([]);
+      }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -324,6 +366,22 @@ const ServerStatus = () => {
   const dailyChanges = getLatestData();
   const staffMembers = onlinePlayers.filter(p => p.isStaff);
   const regularPlayers = onlinePlayers.filter(p => !p.isStaff);
+
+  // Add function to load more players
+  const loadMorePlayers = () => {
+    setPlayerLimit(prev => prev + 50);
+    fetchServerData();
+  };
+
+  const toggleShowAllPlayers = () => {
+    setShowAllPlayers(prev => !prev);
+    if (!showAllPlayers) {
+      setPlayerLimit(1000); // Set a reasonable max limit
+    } else {
+      setPlayerLimit(50); // Reset to default
+    }
+    fetchServerData();
+  };
 
   const SimpleChart = ({ data, dataKey, color }: { data: ChartData[], dataKey: keyof ChartData, color: string }) => {
     const validData = data.filter(d => d[dataKey] !== null);
@@ -486,7 +544,7 @@ const ServerStatus = () => {
         </div>
       </div>
 
-      {/* Online Players Section - Only Real Data */}
+      {/* Online Players Section - With Safety Limits */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Staff Members */}
         <Card className="bg-black/40 border-red-500/20 text-white">
@@ -546,7 +604,7 @@ const ServerStatus = () => {
           </CardContent>
         </Card>
 
-        {/* Regular Players */}
+        {/* Regular Players - With Load More */}
         <Card className="bg-black/40 border-blue-500/20 text-white">
           <CardHeader>
             <CardTitle className="text-blue-400 flex items-center space-x-2">
@@ -554,10 +612,13 @@ const ServerStatus = () => {
               <span>Players Online</span>
               <Badge variant="secondary" className="bg-blue-600/20 text-blue-300">
                 {regularPlayers.length}
+                {serverData?.stats.numOnlinePlayers && regularPlayers.length < serverData.stats.numOnlinePlayers && 
+                  ` of ${serverData.stats.numOnlinePlayers}`
+                }
               </Badge>
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Currently online players
+              Currently online players {!showAllPlayers && `(showing first ${playerLimit})`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -568,32 +629,54 @@ const ServerStatus = () => {
                 ))}
               </div>
             ) : regularPlayers.length > 0 ? (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {regularPlayers.slice(0, 10).map((player, index) => (
-                  <div
-                    key={player.name + index}
-                    className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                        <User className="w-4 h-4 text-white" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-blue-300">{player.name}</div>
-                        <div className="text-xs text-gray-400">
-                          {player.town && <span>{player.town}</span>}
-                          {player.nation && <span> • {player.nation}</span>}
+              <>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {regularPlayers.slice(0, 20).map((player, index) => (
+                    <div
+                      key={player.name + index}
+                      className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                          <User className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-blue-300">{player.name}</div>
+                          <div className="text-xs text-gray-400">
+                            {player.town && <span>{player.town}</span>}
+                            {player.nation && <span> • {player.nation}</span>}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {regularPlayers.length > 10 && (
-                  <div className="text-center py-2 text-gray-400 text-sm">
-                    +{regularPlayers.length - 10} more players online
+                  ))}
+                  {regularPlayers.length > 20 && (
+                    <div className="text-center py-2 text-gray-400 text-sm">
+                      +{regularPlayers.length - 20} more players loaded
+                    </div>
+                  )}
+                </div>
+                
+                {/* Load More Controls */}
+                {serverData?.stats.numOnlinePlayers && regularPlayers.length < serverData.stats.numOnlinePlayers && (
+                  <div className="mt-4 space-y-2">
+                    <button
+                      onClick={loadMorePlayers}
+                      className="w-full p-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 rounded-lg text-blue-300 text-sm transition-colors"
+                      disabled={loading}
+                    >
+                      Load More Players (+50)
+                    </button>
+                    <button
+                      onClick={toggleShowAllPlayers}
+                      className="w-full p-2 bg-yellow-600/20 hover:bg-yellow-600/30 border border-yellow-500/30 rounded-lg text-yellow-300 text-sm transition-colors"
+                      disabled={loading}
+                    >
+                      {showAllPlayers ? 'Show Less' : 'Load All Players (May be slow)'}
+                    </button>
                   </div>
                 )}
-              </div>
+              </>
             ) : (
               <div className="text-center py-8 text-gray-400">
                 <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
