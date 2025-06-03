@@ -349,6 +349,110 @@ const ServerStatus = () => {
   }
 }, [isStaffMember, getPlayerRank]);
 
+  // Add the missing loadMoreOnlinePlayers function
+  const loadMoreOnlinePlayers = useCallback(async () => {
+    try {
+      setIsLoadingMore(true);
+      console.log('Loading more online players...');
+
+      const proxyUrl = 'https://corsproxy.io/?';
+      const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
+      
+      if (!playersResponse.ok) {
+        throw new Error('Failed to fetch more players');
+      }
+      
+      const allPlayers = await playersResponse.json();
+      
+      if (!Array.isArray(allPlayers) || allPlayers.length === 0) {
+        throw new Error('No additional players data received');
+      }
+
+      // Get more players in randomized batches
+      const shuffledPlayers = [...allPlayers].sort(() => Math.random() - 0.5);
+      const batchSize = 200;
+      const maxBatches = 3; // Check up to 600 more players
+      const foundOnlinePlayers: any[] = [];
+      
+      for (let batch = 0; batch < maxBatches; batch++) {
+        const startIndex = batch * batchSize;
+        const endIndex = Math.min(startIndex + batchSize, shuffledPlayers.length);
+        const batchPlayers = shuffledPlayers.slice(startIndex, endIndex).map(p => p.name || p.uuid);
+        
+        try {
+          console.log(`Loading more batch ${batch + 1}/${maxBatches} (${batchPlayers.length} players)...`);
+          
+          const detailResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              query: batchPlayers,
+              template: {
+                name: true,
+                title: true,
+                town: true,
+                nation: true,
+                status: true
+              }
+            })
+          });
+
+          if (detailResponse.ok) {
+            const batchData = await detailResponse.json();
+            const batchOnline = batchData.filter((player: any) => 
+              player.status && player.status.isOnline === true
+            );
+
+            if (batchOnline.length > 0) {
+              foundOnlinePlayers.push(...batchOnline);
+              console.log(`Found ${batchOnline.length} more online players in batch ${batch + 1}, total new: ${foundOnlinePlayers.length}`);
+            }
+          }
+
+          // Delay between batches to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (batchError) {
+          console.log(`More players batch ${batch + 1} failed:`, batchError);
+        }
+      }
+
+      if (foundOnlinePlayers.length > 0) {
+        const processedNewPlayers = foundOnlinePlayers
+          .map((player: any) => ({
+            name: player.name,
+            isStaff: isStaffMember(player.name),
+            rank: getPlayerRank(player.name, player.title),
+            isOnline: true,
+            town: player.town?.name,
+            nation: player.nation?.name,
+            title: player.title
+          }))
+          .filter((player, index, self) => 
+            index === self.findIndex(p => p.name === player.name) && // Remove duplicates
+            !onlinePlayers.some(existing => existing.name === player.name) // Don't add existing players
+          );
+
+        if (processedNewPlayers.length > 0) {
+          setOnlinePlayers(prev => {
+            const combined = [...prev, ...processedNewPlayers];
+            return combined.sort((a, b) => {
+              if (a.isStaff && !b.isStaff) return -1;
+              if (!a.isStaff && b.isStaff) return 1;
+              return a.name.localeCompare(b.name);
+            });
+          });
+          console.log(`Added ${processedNewPlayers.length} new online players`);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading more online players:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isStaffMember, getPlayerRank, onlinePlayers]);
+
   // Enhanced fetchServerData function
   const fetchServerData = useCallback(async () => {
     try {
