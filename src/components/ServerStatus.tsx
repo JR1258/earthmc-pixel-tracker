@@ -58,33 +58,8 @@ const ServerStatus = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
-  const [playerLimit, setPlayerLimit] = useState(50);
+  const [playerLimit, setPlayerLimit] = useState(20); // Reduced from 50 to 20
   const [showAllPlayers, setShowAllPlayers] = useState(false);
-
-  // Helper functions to get latest data changes
-  const getLatestData = () => {
-    if (historicalData.length < 2) return null;
-    
-    const latest = historicalData[historicalData.length - 1];
-    const previous = historicalData[historicalData.length - 2];
-    
-    if (!latest || !previous) return null;
-    
-    return {
-      residents: latest.residents && previous.residents ? {
-        current: latest.residents,
-        change: latest.residents - previous.residents
-      } : null,
-      towns: latest.towns && previous.towns ? {
-        current: latest.towns,
-        change: latest.towns - previous.towns
-      } : null,
-      nations: latest.nations && previous.nations ? {
-        current: latest.nations,
-        change: latest.nations - previous.nations
-      } : null
-    };
-  };
 
   // Helper functions for time display
   const formatServerTime = useCallback(() => {
@@ -109,13 +84,13 @@ const ServerStatus = () => {
   }, []);
 
   const getMinecraftTimeOfDay = useCallback(() => {
-    const hour = currentTime.getHours();
-    if (hour >= 6 && hour < 18) {
+    const minecraftTime = (Date.now() / 50) % 24000;
+    if (minecraftTime < 12000) {
       return { period: 'Day', icon: '☀️' };
     } else {
       return { period: 'Night', icon: '🌙' };
     }
-  }, [currentTime]);
+  }, []);
 
   // Helper function for rank colors
   const getRankColors = useCallback((rank: string) => {
@@ -237,6 +212,7 @@ const ServerStatus = () => {
     return { change };
   }, []);
 
+  // SINGLE getLatestData function - removed the duplicate
   const getLatestData = useCallback(() => {
     const validData = historicalData.filter(d => 
       d.residents !== null && d.towns !== null && d.nations !== null
@@ -269,12 +245,13 @@ const ServerStatus = () => {
       console.log('Server info received:', serverInfo);
       setServerData(serverInfo);
 
-      // Create mock players for now to prevent build issues
+      // Create LIMITED mock players (max 20 initially)
       const numOnline = serverInfo.stats?.numOnlinePlayers || 0;
       if (numOnline > 0) {
         const mockPlayers: Player[] = [];
-        // Create a small number of mock players to test UI
-        for (let i = 0; i < Math.min(numOnline, 10); i++) {
+        // Create only 5 mock players to test UI and prevent performance issues
+        const playersToCreate = Math.min(5, numOnline);
+        for (let i = 0; i < playersToCreate; i++) {
           mockPlayers.push({
             name: `Player_${i + 1}`,
             isStaff: i < 2,
@@ -286,11 +263,11 @@ const ServerStatus = () => {
         setOnlinePlayers([]);
       }
 
-      // Fetch towns data with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-
+      // Fetch towns data with timeout (keep this simpler)
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // Reduced timeout
+
         const townsResponse = await fetch(
           `${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`,
           { signal: controller.signal }
@@ -318,13 +295,13 @@ const ServerStatus = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []); // NO dependencies to prevent infinite loops
 
   // Memoize staff list loading
   const loadStaffList = useCallback(async () => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // Reduced timeout
 
       const response = await fetch(
         'https://raw.githubusercontent.com/jwkerr/staff/master/staff.json',
@@ -333,7 +310,9 @@ const ServerStatus = () => {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error('Failed to load staff list');
+        console.log('Staff list not available, continuing without it');
+        setStaffList([]);
+        return;
       }
       const staffData = await response.json();
       console.log('Loaded staff list:', staffData);
@@ -344,15 +323,16 @@ const ServerStatus = () => {
     }
   }, []);
 
-  // Fix useEffect dependencies to prevent infinite loops
+  // SIMPLIFIED useEffect - only run once on mount
   useEffect(() => {
     let mounted = true;
     
     const initializeData = async () => {
       if (mounted) {
+        console.log('Initializing data...');
         await loadStaffList();
-        await fetchServerData();
         await loadHistoricalData();
+        await fetchServerData();
       }
     };
 
@@ -361,21 +341,24 @@ const ServerStatus = () => {
     return () => {
       mounted = false;
     };
-  }, [loadStaffList, fetchServerData, loadHistoricalData]);
+  }, []); // Empty dependency array - only run once
 
-  // Separate useEffect for interval
+  // SIMPLIFIED interval useEffect
   useEffect(() => {
     const interval = setInterval(() => {
+      console.log('Refreshing server data...');
       fetchServerData();
-    }, 5 * 60 * 1000);
+    }, 5 * 60 * 1000); // 5 minutes
 
     return () => clearInterval(interval);
-  }, [fetchServerData]);
+  }, []); // No dependencies to prevent recreation
 
-  // Fix the saveCurrentStats useEffect
+  // Save stats when server data changes
   useEffect(() => {
-    saveCurrentStats();
-  }, [saveCurrentStats]);
+    if (serverData) {
+      saveCurrentStats();
+    }
+  }, [serverData]); // Only depend on serverData
 
   // Clock timer
   useEffect(() => {
@@ -392,12 +375,12 @@ const ServerStatus = () => {
 
   // Simplify load more functions
   const loadMorePlayers = useCallback(() => {
-    setPlayerLimit(prev => prev + 50);
+    setPlayerLimit(prev => Math.min(prev + 20, 100)); // Limit to max 100
   }, []);
 
   const toggleShowAllPlayers = useCallback(() => {
     setShowAllPlayers(prev => !prev);
-    setPlayerLimit(showAllPlayers ? 50 : 1000);
+    setPlayerLimit(showAllPlayers ? 20 : 100); // Max 100 instead of 1000
   }, [showAllPlayers]);
 
   const SimpleChart = useCallback(({ data, dataKey, color }: { data: ChartData[], dataKey: keyof ChartData, color: string }) => {
@@ -629,10 +612,13 @@ const ServerStatus = () => {
               <span>Players Online</span>
               <Badge variant="secondary" className="bg-blue-600/20 text-blue-300">
                 {regularPlayers.length}
+                {serverData?.stats.numOnlinePlayers && regularPlayers.length < serverData.stats.numOnlinePlayers && 
+                  ` of ${serverData.stats.numOnlinePlayers}`
+                }
               </Badge>
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Currently online players
+              Currently online players (showing {Math.min(playerLimit, regularPlayers.length)})
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -643,27 +629,41 @@ const ServerStatus = () => {
                 ))}
               </div>
             ) : regularPlayers.length > 0 ? (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {regularPlayers.slice(0, 20).map((player, index) => (
-                  <div
-                    key={player.name + index}
-                    className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                        <User className="w-4 h-4 text-white" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-blue-300">{player.name}</div>
-                        <div className="text-xs text-gray-400">
-                          {player.town && <span>{player.town}</span>}
-                          {player.nation && <span> • {player.nation}</span>}
+              <>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {regularPlayers.slice(0, Math.min(playerLimit, 20)).map((player, index) => (
+                    <div
+                      key={player.name + index}
+                      className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                          <User className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-blue-300">{player.name}</div>
+                          <div className="text-xs text-gray-400">
+                            {player.town && <span>{player.town}</span>}
+                            {player.nation && <span> • {player.nation}</span>}
+                          </div>
                         </div>
                       </div>
                     </div>
+                  ))}
+                </div>
+                
+                {/* Load More Controls - only show if we have mock data */}
+                {regularPlayers.length === 5 && serverData?.stats.numOnlinePlayers && serverData.stats.numOnlinePlayers > 5 && (
+                  <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-lg text-center">
+                    <p className="text-yellow-300 text-sm mb-2">
+                      Showing {regularPlayers.length} of {serverData.stats.numOnlinePlayers} online players
+                    </p>
+                    <p className="text-gray-400 text-xs">
+                      Player list API integration in progress
+                    </p>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             ) : (
               <div className="text-center py-8 text-gray-400">
                 <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
