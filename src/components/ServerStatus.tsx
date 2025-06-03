@@ -43,10 +43,17 @@ interface ChartData {
   onlinePlayers: number | null;
 }
 
+interface StaffMember {
+  name: string;
+  rank: string;
+  discord?: string;
+}
+
 const ServerStatus = () => {
   const [serverData, setServerData] = useState<ServerData | null>(null);
   const [topTowns, setTopTowns] = useState<Town[]>([]);
   const [onlinePlayers, setOnlinePlayers] = useState<Player[]>([]);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -96,33 +103,130 @@ const ServerStatus = () => {
     }
   };
 
-  // Helper function to identify staff members (you can customize this)
+  // Load the real staff list from GitHub
+  const loadStaffList = async () => {
+    try {
+      const response = await fetch('https://raw.githubusercontent.com/jwkerr/staff/master/staff.json');
+      if (response.ok) {
+        const staffData = await response.json();
+        console.log('Loaded staff list:', staffData);
+        setStaffList(staffData);
+      } else {
+        console.warn('Could not load staff list, using fallback');
+        // Fallback staff list if the GitHub repo is unavailable
+        setStaffList([
+          { name: 'fix', rank: 'Owner' },
+          { name: 'KarlOfDuty', rank: 'Admin' },
+          { name: 'Seranis', rank: 'Admin' },
+          { name: '32Oreo', rank: 'Moderator' },
+          { name: 'ElectricBird', rank: 'Moderator' },
+          { name: 'Fruitloopins', rank: 'Moderator' },
+        ]);
+      }
+    } catch (error) {
+      console.error('Failed to load staff list:', error);
+      // Use fallback staff list
+      setStaffList([
+        { name: 'fix', rank: 'Owner' },
+        { name: 'KarlOfDuty', rank: 'Admin' },
+        { name: 'Seranis', rank: 'Admin' },
+        { name: '32Oreo', rank: 'Moderator' },
+        { name: 'ElectricBird', rank: 'Moderator' },
+        { name: 'Fruitloopins', rank: 'Moderator' },
+      ]);
+    }
+  };
+
+  // Helper function to identify staff members using the real staff list
   const isStaffMember = (playerName: string): boolean => {
-    const staffKeywords = ['admin', 'mod', 'staff', 'helper', 'owner'];
-    return staffKeywords.some(keyword => 
-      playerName.toLowerCase().includes(keyword)
+    return staffList.some(staff => 
+      staff.name.toLowerCase() === playerName.toLowerCase()
     );
   };
 
-  // Helper function to get player rank
+  // Helper function to get player rank from the real staff list
   const getPlayerRank = (playerName: string, title?: string): string => {
     if (title) return title;
-    if (isStaffMember(playerName)) {
-      if (playerName.toLowerCase().includes('admin') || playerName.toLowerCase().includes('owner')) return 'Admin';
-      if (playerName.toLowerCase().includes('mod')) return 'Moderator';
-      return 'Staff';
+    
+    const staffMember = staffList.find(staff => 
+      staff.name.toLowerCase() === playerName.toLowerCase()
+    );
+    
+    if (staffMember) {
+      return staffMember.rank;
     }
+    
     return 'Player';
+  };
+
+  // Helper function to get rank colors
+  const getRankColors = (rank: string) => {
+    switch (rank) {
+      case 'Owner':
+        return {
+          bg: 'bg-red-600',
+          border: 'border-red-500/20',
+          cardBg: 'bg-red-900/20',
+          text: 'text-red-300',
+          badgeBg: 'bg-red-600/30'
+        };
+      case 'Admin':
+        return {
+          bg: 'bg-blue-600',
+          border: 'border-blue-500/20',
+          cardBg: 'bg-blue-900/20',
+          text: 'text-blue-300',
+          badgeBg: 'bg-blue-600/30'
+        };
+      case 'Developer':
+        return {
+          bg: 'bg-cyan-600',
+          border: 'border-cyan-500/20',
+          cardBg: 'bg-cyan-900/20',
+          text: 'text-cyan-300',
+          badgeBg: 'bg-cyan-600/30'
+        };
+      case 'Moderator':
+        return {
+          bg: 'bg-green-700',
+          border: 'border-green-600/20',
+          cardBg: 'bg-green-900/20',
+          text: 'text-green-300',
+          badgeBg: 'bg-green-700/30'
+        };
+      case 'Helper':
+        return {
+          bg: 'bg-green-300',
+          border: 'border-green-200/20',
+          cardBg: 'bg-green-100/10',
+          text: 'text-green-200',
+          badgeBg: 'bg-green-300/30'
+        };
+      default:
+        return {
+          bg: 'bg-red-600',
+          border: 'border-red-500/20',
+          cardBg: 'bg-red-900/20',
+          text: 'text-red-300',
+          badgeBg: 'bg-red-600/30'
+        };
+    }
   };
 
   // Generate mock players for demo when API doesn't provide online players
   const generateMockPlayers = (count: number): Player[] => {
-    const mockNames = [
+    // Mix of real staff names and regular player names
+    const realStaffNames = staffList.map(staff => staff.name);
+    const mockPlayerNames = [
       'BuilderPro', 'MineCraftLord', 'EarthMC_Fan', 'TownMayor', 'NationLeader',
       'PixelArtist', 'RedstoneGuru', 'ExplorerMax', 'TraderJoe', 'ArchitectAce',
       'CrafterMike', 'DiggerDan', 'FarmerBob', 'MinerSam', 'BuilderJoe',
-      'Admin_Sarah', 'Mod_Johnson', 'Helper_Mike', 'Staff_Emma', 'Owner_Alex'
+      'BlockCrafter', 'StoneMiner', 'TreeChopper', 'WaterWalker', 'SkyBuilder',
+      'Owner_Alex', 'Admin_Sarah', 'Developer_Mike', 'Mod_Johnson', 'Helper_Emma'
     ];
+    
+    // Include some real staff members in the mock data
+    const allNames = [...realStaffNames.slice(0, 3), ...mockPlayerNames];
     
     const mockTowns = ['Berlin', 'Tokyo', 'London', 'Paris', 'NewYork', 'Sydney', 'Rome', 'Madrid', 'Cairo', 'Mumbai'];
     const mockNations = ['Germany', 'Japan', 'Britain', 'France', 'USA', 'Australia', 'Italy', 'Spain', 'Egypt', 'India'];
@@ -132,7 +236,7 @@ const ServerStatus = () => {
     const players = [];
     
     for (let i = 0; i < playersToShow; i++) {
-      const name = mockNames[i] || `Player${i + 1}`;
+      const name = allNames[i] || `Player${i + 1}`;
       players.push({
         name,
         town: mockTowns[Math.floor(Math.random() * mockTowns.length)],
@@ -227,18 +331,24 @@ const ServerStatus = () => {
   };
 
   useEffect(() => {
-    fetchServerData();
+    // Load staff list first, then fetch server data
+    loadStaffList().then(() => {
+      fetchServerData();
+    });
     loadHistoricalData();
     
     const interval = setInterval(fetchServerData, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
+  // Update the dependency to regenerate players when staff list changes
   useEffect(() => {
-    if (serverData) {
+    if (serverData && staffList.length > 0) {
+      const mockPlayers = generateMockPlayers(serverData.stats.numOnlinePlayers);
+      setOnlinePlayers(mockPlayers);
       saveCurrentStats();
     }
-  }, [serverData]);
+  }, [serverData, staffList]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -464,7 +574,7 @@ const ServerStatus = () => {
         </div>
       </div>
 
-      {/* Online Players Section - Moved here right after Server Status */}
+      {/* Online Players Section - With Custom Staff Colors */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Staff Members */}
         <Card className="bg-black/40 border-red-500/20 text-white">
@@ -489,28 +599,31 @@ const ServerStatus = () => {
               </div>
             ) : staffMembers.length > 0 ? (
               <div className="space-y-3 max-h-64 overflow-y-auto">
-                {staffMembers.map((staff, index) => (
-                  <div
-                    key={staff.name + index}
-                    className="flex items-center justify-between p-3 bg-red-900/20 rounded-lg border border-red-500/20"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center">
-                        <Shield className="w-4 h-4 text-white" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-red-300">{staff.name}</div>
-                        <div className="text-xs text-gray-400">
-                          {staff.rank}
-                          {staff.town && <span> • {staff.town}</span>}
+                {staffMembers.map((staff, index) => {
+                  const colors = getRankColors(staff.rank || 'Staff');
+                  return (
+                    <div
+                      key={staff.name + index}
+                      className={`flex items-center justify-between p-3 ${colors.cardBg} rounded-lg border ${colors.border}`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-8 h-8 ${colors.bg} rounded-full flex items-center justify-center`}>
+                          <Shield className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <div className={`font-semibold ${colors.text}`}>{staff.name}</div>
+                          <div className="text-xs text-gray-400">
+                            {staff.rank}
+                            {staff.town && <span> • {staff.town}</span>}
+                          </div>
                         </div>
                       </div>
+                      <Badge className={`${colors.badgeBg} ${colors.text} text-xs`}>
+                        {staff.rank}
+                      </Badge>
                     </div>
-                    <Badge className="bg-red-600/30 text-red-300 text-xs">
-                      {staff.rank}
-                    </Badge>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-400">
