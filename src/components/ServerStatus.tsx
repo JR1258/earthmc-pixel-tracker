@@ -232,91 +232,66 @@ const ServerStatus = () => {
     };
   }, [historicalData, calculateDailyChange]);
 
-  // NEW: Function to fetch real online players
+  // Function to try to get online players from the server data or through alternative methods
   const fetchOnlinePlayers = useCallback(async () => {
     try {
       setPlayerLoadingStatus('loading');
       console.log('Fetching online players...');
 
-      // Method 1: Try to get residents and filter for recently active ones
-      const proxyUrl = 'https://corsproxy.io/?';
-      
-      // First, try to get a sample of residents to check their online status
-      const residentsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/residents')}`);
-      
-      if (!residentsResponse.ok) {
-        throw new Error('Failed to fetch residents data');
-      }
-      
-      const residentsData = await residentsResponse.json();
-      console.log('Residents data type:', typeof residentsData);
-      console.log('Sample residents keys:', Object.keys(residentsData).slice(0, 5));
-      
-      if (typeof residentsData === 'object' && !Array.isArray(residentsData)) {
-        const residentNames = Object.keys(residentsData);
-        const sampleSize = Math.min(100, residentNames.length); // Sample first 100 residents
-        const sampleNames = residentNames.slice(0, sampleSize);
-        
-        console.log(`Checking ${sampleNames.length} residents for online status...`);
-        
-        // Use POST to get detailed info for sampled residents
-        const detailedResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/residents')}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: sampleNames
+      // First check if server data includes online players directly
+      if (serverData?.players && Array.isArray(serverData.players)) {
+        const onlinePlayersData = serverData.players
+          .map((playerName: string | Player) => {
+            const name = typeof playerName === 'string' ? playerName : playerName.name;
+            return {
+              name,
+              isStaff: isStaffMember(name),
+              rank: getPlayerRank(name),
+              isOnline: true
+            };
           })
-        });
-        
-        if (detailedResponse.ok) {
-          const detailedData = await detailedResponse.json();
-          console.log('Detailed residents data received, checking for online players...');
-          
-          const onlinePlayersFound: Player[] = [];
-          const now = Date.now();
-          const fiveMinutesAgo = now - (5 * 60 * 1000); // 5 minutes threshold
-          
-          Object.entries(detailedData).forEach(([playerName, playerData]: [string, any]) => {
-            if (playerData && typeof playerData === 'object') {
-              // Check if player is explicitly marked as online or was very recently active
-              const isOnline = playerData.isOnline || 
-                              playerData.status?.isOnline || 
-                              (playerData.lastOnline && playerData.lastOnline > fiveMinutesAgo) ||
-                              (playerData.timestamps?.lastOnline && playerData.timestamps.lastOnline > fiveMinutesAgo);
-              
-              if (isOnline) {
-                const player: Player = {
-                  name: playerName,
-                  town: playerData.town?.name || playerData.townName,
-                  nation: playerData.nation?.name || playerData.nationName,
-                  isStaff: isStaffMember(playerName),
-                  rank: getPlayerRank(playerName, playerData.title),
-                  isOnline: true,
-                  lastOnline: playerData.lastOnline || playerData.timestamps?.lastOnline
-                };
-                onlinePlayersFound.push(player);
-              }
-            }
-          });
-          
-          console.log(`Found ${onlinePlayersFound.length} online players from residents check`);
-          
-          // Sort by staff first, then by name
-          onlinePlayersFound.sort((a, b) => {
+          .sort((a, b) => {
             if (a.isStaff && !b.isStaff) return -1;
             if (!a.isStaff && b.isStaff) return 1;
             return a.name.localeCompare(b.name);
           });
+        
+        setOnlinePlayers(onlinePlayersData);
+        setPlayerLoadingStatus('success');
+        return;
+      }
+
+      // Alternative method: Try the main server endpoint again
+      const proxyUrl = 'https://corsproxy.io/?';
+      const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
+      
+      if (serverResponse.ok) {
+        const serverInfo = await serverResponse.json();
+        
+        // Check for different possible structures where online players might be stored
+        if (serverInfo.players && Array.isArray(serverInfo.players)) {
+          const onlinePlayersData = serverInfo.players
+            .map((player: any) => ({
+              name: typeof player === 'string' ? player : player.name,
+              isStaff: isStaffMember(typeof player === 'string' ? player : player.name),
+              rank: getPlayerRank(typeof player === 'string' ? player : player.name),
+              isOnline: true,
+              town: typeof player === 'object' ? player.town : undefined,
+              nation: typeof player === 'object' ? player.nation : undefined
+            }))
+            .sort((a, b) => {
+              if (a.isStaff && !b.isStaff) return -1;
+              if (!a.isStaff && b.isStaff) return 1;
+              return a.name.localeCompare(b.name);
+            });
           
-          setOnlinePlayers(onlinePlayersFound);
+          setOnlinePlayers(onlinePlayersData);
           setPlayerLoadingStatus('success');
           return;
         }
       }
-      
-      // Fallback: If we can't get real online players, show a message but no mock data
+
+      // If we can't get real online players, just set empty array
       console.log('Could not determine online players from API');
       setOnlinePlayers([]);
       setPlayerLoadingStatus('error');
@@ -326,7 +301,7 @@ const ServerStatus = () => {
       setOnlinePlayers([]);
       setPlayerLoadingStatus('error');
     }
-  }, [isStaffMember, getPlayerRank]);
+  }, [isStaffMember, getPlayerRank, serverData]);
 
   // Memoize the fetchServerData function to prevent infinite loops
   const fetchServerData = useCallback(async () => {
@@ -369,16 +344,13 @@ const ServerStatus = () => {
         setTopTowns([]);
       }
 
-      // After loading server data, try to fetch real online players
-      await fetchOnlinePlayers();
-
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       console.error('Error fetching server data:', err);
     } finally {
       setLoading(false);
     }
-  }, [fetchOnlinePlayers]);
+  }, []);
 
   // Memoize staff list loading
   const loadStaffList = useCallback(async () => {
@@ -425,6 +397,13 @@ const ServerStatus = () => {
       mounted = false;
     };
   }, [loadStaffList, fetchServerData, loadHistoricalData]);
+
+  // Fetch online players after server data is loaded
+  useEffect(() => {
+    if (serverData && staffList.length > 0) {
+      fetchOnlinePlayers();
+    }
+  }, [serverData, staffList, fetchOnlinePlayers]);
 
   // SIMPLIFIED interval useEffect
   useEffect(() => {
@@ -702,7 +681,7 @@ const ServerStatus = () => {
               </Badge>
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Currently online players {playerLoadingStatus === 'success' ? '(real-time data)' : '(limited sample)'}
+              Currently online players {playerLoadingStatus === 'success' ? '(real-time data)' : '(limited data)'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -741,10 +720,10 @@ const ServerStatus = () => {
                 {playerLoadingStatus === 'success' && regularPlayers.length > 0 && (
                   <div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
                     <p className="text-green-300 text-sm">
-                      Showing {regularPlayers.length} recently active players
+                      Showing {regularPlayers.length} players
                     </p>
                     <p className="text-gray-400 text-xs">
-                      Real-time online detection from API sampling
+                      Data from server API
                     </p>
                   </div>
                 )}
@@ -759,7 +738,7 @@ const ServerStatus = () => {
                       API Player Detection Issues
                     </p>
                     <p className="text-gray-400 text-xs">
-                      Server reports {serverData?.stats.numOnlinePlayers || 0} online players but we cannot access the detailed online player list.
+                      Server reports {serverData?.stats.numOnlinePlayers || 0} online players but individual player data is not available.
                     </p>
                   </div>
                 )}
