@@ -482,7 +482,7 @@ const ServerStatus = () => {
     try {
       console.log('Loading staff list...');
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
 
       const response = await fetch(
         'https://raw.githubusercontent.com/jwkerr/staff/master/staff.json',
@@ -491,23 +491,62 @@ const ServerStatus = () => {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.log('Staff list not available, using fallback');
-        const fallbackStaff = [
-          { name: 'FixEMC', rank: 'Owner' },
-          { name: 'KarlOfDuty', rank: 'Admin' },
-          { name: 'Fruitloopins', rank: 'Developer' },
-          { name: 'lucas2107', rank: 'Moderator' },
-          { name: 'Warriorrr', rank: 'Helper' }
-        ];
-        setStaffList(fallbackStaff);
-        return;
+        throw new Error('Failed to fetch staff list');
       }
 
       const staffData = await response.json();
       console.log('Raw staff data received:', staffData);
       
-      // Transform UUID-based staff data to name-based format
-      const knownStaff = [
+      // staffData is an object with UUIDs as keys
+      const staffUUIDs = Object.keys(staffData);
+      const staffList: StaffMember[] = [];
+      
+      if (staffUUIDs.length === 0) {
+        throw new Error('No staff data found');
+      }
+
+      // Convert UUIDs to player names using Mojang API
+      const proxyUrl = 'https://corsproxy.io/?';
+      
+      for (const uuid of staffUUIDs) {
+        try {
+          const cleanUUID = uuid.replace(/-/g, ''); // Remove dashes for Mojang API
+          const mojangResponse = await fetch(
+            `${proxyUrl}${encodeURIComponent(`https://sessionserver.mojang.com/session/minecraft/profile/${cleanUUID}`)}`
+          );
+          
+          if (mojangResponse.ok) {
+            const profileData = await mojangResponse.json();
+            const playerName = profileData.name;
+            const staffInfo = staffData[uuid];
+            
+            if (playerName && staffInfo && staffInfo.rank) {
+              staffList.push({
+                name: playerName,
+                rank: staffInfo.rank,
+                discord: staffInfo.discord
+              });
+            }
+          }
+          
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          console.log(`Failed to get name for UUID ${uuid}:`, error);
+        }
+      }
+      
+      if (staffList.length === 0) {
+        throw new Error('Could not resolve any staff names');
+      }
+      
+      console.log('Processed staff list:', staffList);
+      setStaffList(staffList);
+      
+    } catch (error) {
+      console.error('Failed to load staff list:', error);
+      // Fallback to known staff members if API fails
+      const fallbackStaff = [
         { name: 'FixEMC', rank: 'Owner' },
         { name: 'KarlOfDuty', rank: 'Admin' },
         { name: 'sn0wyz', rank: 'Admin' },
@@ -515,43 +554,7 @@ const ServerStatus = () => {
         { name: 'gorkymoo1119', rank: 'Developer' },
         { name: 'lucas2107', rank: 'Staff Manager' },
         { name: 'Warriorrr', rank: 'Staff Manager' },
-        { name: 'RangerMK01', rank: 'Staff Manager' },
-        { name: 'Vorobyviktor', rank: 'Moderator' },
-        { name: 'StarKiller1744', rank: 'Moderator' },
-        { name: 'AlphaDS', rank: 'Moderator' },
-        { name: 'DataPools', rank: 'Moderator' },
-        { name: 'frederik1906', rank: 'Moderator' },
-        { name: 'geg_ma', rank: 'Moderator' },
-        { name: 'GetShrekt0', rank: 'Moderator' },
-        { name: 'NamelessSteve10', rank: 'Moderator' },
-        { name: 'RoyaleStrike', rank: 'Moderator' },
-        { name: 'Shippe', rank: 'Moderator' },
-        { name: 'TownsEndDragon', rank: 'Moderator' },
-        { name: 'Unbinding', rank: 'Moderator' },
-        { name: 'GamerTime_12', rank: 'Moderator' },
-        { name: 'TachiOnAir', rank: 'Helper' },
-        { name: 'Aries_aow', rank: 'Helper' },
-        { name: 'Redstone_Chaser', rank: 'Helper' },
-        { name: 'Cadenya', rank: 'Helper' },
-        { name: 'Dawser_the_Great', rank: 'Helper' },
-        { name: 'EtherealSquid', rank: 'Helper' },
-        { name: 'HiItsJake', rank: 'Helper' },
-        { name: 'Icarus_the_2nd', rank: 'Helper' },
-        { name: 'OneMoreLegend', rank: 'Helper' },
-        { name: 'PolkadotBlueBear', rank: 'Helper' }
-      ];
-      
-      console.log('Using known staff list:', knownStaff);
-      setStaffList(knownStaff);
-      
-    } catch (error) {
-      console.error('Failed to load staff list:', error);
-      const fallbackStaff = [
-        { name: 'FixEMC', rank: 'Owner' },
-        { name: 'KarlOfDuty', rank: 'Admin' },
-        { name: 'Fruitloopins', rank: 'Developer' },
-        { name: 'lucas2107', rank: 'Moderator' },
-        { name: 'Warriorrr', rank: 'Helper' }
+        { name: 'RangerMK01', rank: 'Staff Manager' }
       ];
       setStaffList(fallbackStaff);
     }
