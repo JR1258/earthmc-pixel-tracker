@@ -895,7 +895,7 @@ const ServerStatus = () => {
                   ))}
                 </div>
                 
-                {/* Load More Button */}
+                {/* Show More Button */}
                 {regularPlayers.length > displayLimit && (
                   <div className="mt-4 text-center">
                     <button
@@ -903,19 +903,6 @@ const ServerStatus = () => {
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm transition-colors"
                     >
                       Show More ({regularPlayers.length - displayLimit} remaining)
-                    </button>
-                  </div>
-                )}
-                
-                {/* Fetch More Players Button */}
-                {displayLimit >= regularPlayers.length && regularPlayers.length > 0 && (
-                  <div className="mt-4 text-center">
-                    <button
-                      onClick={loadMoreOnlinePlayers}
-                      disabled={isLoadingMore}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm transition-colors"
-                    >
-                      {isLoadingMore ? 'Loading More Players...' : 'Load More Players'}
                     </button>
                   </div>
                 )}
