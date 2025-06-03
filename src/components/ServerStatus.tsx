@@ -58,6 +58,11 @@ const ServerStatus = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [historicalData, setHistoricalData] = useState<ChartData[]>([]);
+  
+  // Pagination states
+  const [staffCurrentPage, setStaffCurrentPage] = useState(1);
+  const [playersCurrentPage, setPlayersCurrentPage] = useState(1);
+  const PLAYERS_PER_PAGE = 50;
 
   const loadHistoricalData = async () => {
     try {
@@ -455,6 +460,18 @@ const ServerStatus = () => {
   const staffMembers = onlinePlayers.filter(p => p.isStaff);
   const regularPlayers = onlinePlayers.filter(p => !p.isStaff);
 
+  // Get paginated data
+  const paginatedStaff = getPaginatedData(staffMembers, staffCurrentPage);
+  const paginatedPlayers = getPaginatedData(regularPlayers, playersCurrentPage);
+  const staffTotalPages = getTotalPages(staffMembers.length);
+  const playersTotalPages = getTotalPages(regularPlayers.length);
+
+  // Reset pagination when data changes
+  useEffect(() => {
+    setStaffCurrentPage(1);
+    setPlayersCurrentPage(1);
+  }, [onlinePlayers]);
+
   const SimpleChart = ({ data, dataKey, color }: { data: ChartData[], dataKey: keyof ChartData, color: string }) => {
     const validData = data.filter(d => d[dataKey] !== null);
     
@@ -523,6 +540,91 @@ const ServerStatus = () => {
       </Card>
     );
   }
+
+  // Pagination helper functions
+  const getPaginatedData = (data: Player[], currentPage: number) => {
+    const startIndex = (currentPage - 1) * PLAYERS_PER_PAGE;
+    const endIndex = startIndex + PLAYERS_PER_PAGE;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (totalItems: number) => {
+    return Math.ceil(totalItems / PLAYERS_PER_PAGE);
+  };
+
+  const PaginationControls = ({ 
+    currentPage, 
+    totalPages, 
+    onPageChange, 
+    totalItems, 
+    itemType 
+  }: {
+    currentPage: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+    totalItems: number;
+    itemType: string;
+  }) => {
+    if (totalPages <= 1) return null;
+
+    const startItem = (currentPage - 1) * PLAYERS_PER_PAGE + 1;
+    const endItem = Math.min(currentPage * PLAYERS_PER_PAGE, totalItems);
+
+    return (
+      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-700/50">
+        <div className="text-xs text-gray-400">
+          Showing {startItem}-{endItem} of {totalItems} {itemType}
+        </div>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            Previous
+          </button>
+          
+          {/* Page numbers */}
+          <div className="flex items-center space-x-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => onPageChange(pageNum)}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    currentPage === pageNum
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -616,7 +718,7 @@ const ServerStatus = () => {
         </div>
       </div>
 
-      {/* Online Players Section - Real Data with Debug Info */}
+      {/* Online Players Section - With Pagination */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Staff Members */}
         <Card className="bg-black/40 border-red-500/20 text-white">
@@ -645,32 +747,41 @@ const ServerStatus = () => {
                 ))}
               </div>
             ) : staffMembers.length > 0 ? (
-              <div className="space-y-3 max-h-64 overflow-y-auto">
-                {staffMembers.map((staff, index) => {
-                  const colors = getRankColors(staff.rank || 'Staff');
-                  return (
-                    <div
-                      key={staff.name + index}
-                      className={`flex items-center justify-between p-3 ${colors.cardBg} rounded-lg border ${colors.border}`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-8 h-8 ${colors.bg} rounded-full flex items-center justify-center`}>
-                          <Shield className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <div className={`font-semibold ${colors.text}`}>{staff.name}</div>
-                          <div className="text-xs text-gray-400">
-                            {staff.rank}
-                            {staff.town && <span> • {staff.town}</span>}
+              <div>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {paginatedStaff.map((staff, index) => {
+                    const colors = getRankColors(staff.rank || 'Staff');
+                    return (
+                      <div
+                        key={staff.name + index}
+                        className={`flex items-center justify-between p-3 ${colors.cardBg} rounded-lg border ${colors.border}`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-8 h-8 ${colors.bg} rounded-full flex items-center justify-center`}>
+                            <Shield className="w-4 h-4 text-white" />
+                          </div>
+                          <div>
+                            <div className={`font-semibold ${colors.text}`}>{staff.name}</div>
+                            <div className="text-xs text-gray-400">
+                              {staff.rank}
+                              {staff.town && <span> • {staff.town}</span>}
+                            </div>
                           </div>
                         </div>
+                        <Badge className={`${colors.badgeBg} ${colors.text} text-xs`}>
+                          {staff.rank}
+                        </Badge>
                       </div>
-                      <Badge className={`${colors.badgeBg} ${colors.text} text-xs`}>
-                        {staff.rank}
-                      </Badge>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+                <PaginationControls
+                  currentPage={staffCurrentPage}
+                  totalPages={staffTotalPages}
+                  onPageChange={setStaffCurrentPage}
+                  totalItems={staffMembers.length}
+                  itemType="staff"
+                />
               </div>
             ) : (
               <div className="text-center py-8 text-gray-400">
@@ -713,31 +824,35 @@ const ServerStatus = () => {
                 ))}
               </div>
             ) : regularPlayers.length > 0 ? (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {regularPlayers.slice(0, 10).map((player, index) => (
-                  <div
-                    key={player.name + index}
-                    className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                        <User className="w-4 h-4 text-white" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-blue-300">{player.name}</div>
-                        <div className="text-xs text-gray-400">
-                          {player.town && <span>{player.town}</span>}
-                          {player.nation && <span> • {player.nation}</span>}
+              <div>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {paginatedPlayers.map((player, index) => (
+                    <div
+                      key={player.name + index}
+                      className="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                          <User className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-blue-300">{player.name}</div>
+                          <div className="text-xs text-gray-400">
+                            {player.town && <span>{player.town}</span>}
+                            {player.nation && <span> • {player.nation}</span>}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {regularPlayers.length > 10 && (
-                  <div className="text-center py-2 text-gray-400 text-sm">
-                    +{regularPlayers.length - 10} more players online
-                  </div>
-                )}
+                  ))}
+                </div>
+                <PaginationControls
+                  currentPage={playersCurrentPage}
+                  totalPages={playersTotalPages}
+                  onPageChange={setPlayersCurrentPage}
+                  totalItems={regularPlayers.length}
+                  itemType="players"
+                />
               </div>
             ) : (
               <div className="text-center py-8 text-gray-400">
