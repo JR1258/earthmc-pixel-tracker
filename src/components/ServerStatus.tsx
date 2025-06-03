@@ -225,37 +225,53 @@ const ServerStatus = () => {
       const serverInfo = await serverResponse.json();
       setServerData(serverInfo);
 
-      // Try to fetch online players from API - only use real data
+      // Try to fetch online players from API using POST method like PlayerLookup
       try {
-        const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
+        const playersResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: [] // Empty query to get all players
+          })
+        });
+
         if (playersResponse.ok) {
-          const playersData = await playersResponse.json();
+          const responseText = await playersResponse.text();
+          
+          // Check if response is valid JSON
+          let playersData;
+          try {
+            playersData = JSON.parse(responseText);
+          } catch (jsonError) {
+            throw new Error('Invalid response format from API');
+          }
+          
           console.log('Real players data received:', playersData);
           
-          // Handle both array and object responses
-          let playersArray = Array.isArray(playersData) ? playersData : Object.values(playersData);
+          // The API returns an object with player names/UUIDs as keys, similar to PlayerLookup
+          const playerKeys = Object.keys(playersData);
           
-          if (playersArray.length > 0) {
-            // Filter for online players and map to our format
-            const onlinePlayersData = playersArray
-              .filter((player: any) => {
-                // Check multiple possible online status fields
-                return player.isOnline === true || 
-                       player.online === true || 
-                       player.status === 'online' ||
-                       player.isOnline === 'true' ||
-                       player.online === 'true';
+          if (playerKeys.length > 0) {
+            const onlinePlayersData = playerKeys
+              .map(key => {
+                const player = playersData[key];
+                // Check if player is online using the same logic as PlayerLookup
+                if (player && player.status && player.status.isOnline) {
+                  return {
+                    name: player.name || key,
+                    title: player.title,
+                    nickname: player.nickname,
+                    town: player.town?.name, // Real town from API
+                    nation: player.nation?.name, // Real nation from API
+                    isStaff: isStaffMember(player.name || key),
+                    rank: getPlayerRank(player.name || key, player.title)
+                  };
+                }
+                return null;
               })
-              .map((player: any) => ({
-                name: player.name || player.nickname || player.username,
-                title: player.title,
-                nickname: player.nickname,
-                town: player.town, // Real town from API
-                nation: player.nation, // Real nation from API
-                isStaff: isStaffMember(player.name || player.nickname || player.username),
-                rank: getPlayerRank(player.name || player.nickname || player.username, player.title)
-              }))
-              .filter(player => player.name) // Remove any players without names
+              .filter(player => player !== null) // Remove offline players
               .sort((a, b) => {
                 // Sort staff first, then alphabetical
                 if (a.isStaff && !b.isStaff) return -1;
