@@ -63,8 +63,9 @@ const ServerStatus = () => {
   const [playerLimit, setPlayerLimit] = useState(20);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
   const [playerLoadingStatus, setPlayerLoadingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [townsLoadingStatus, setTownsLoadingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [staffLoadingStatus, setStaffLoadingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
-  // Helper functions for time display
   const formatServerTime = useCallback(() => {
     return currentTime.toLocaleTimeString('en-US', {
       timeZone: 'America/New_York',
@@ -95,7 +96,6 @@ const ServerStatus = () => {
     }
   }, []);
 
-  // Helper function for rank colors
   const getRankColors = useCallback((rank: string) => {
     switch (rank) {
       case 'Owner':
@@ -193,40 +193,6 @@ const ServerStatus = () => {
     }
   }, [serverData, loadHistoricalData]);
 
-  // Updated UUID to name mapping function
-  const getNameFromUUID = useCallback(async (uuid: string): Promise<string | null> => {
-    try {
-      const response = await fetch(`https://sessionserver.mojang.com/session/minecraft/profile/${uuid}`);
-      if (response.ok) {
-        const data = await response.json();
-        return data.name;
-      }
-    } catch (error) {
-      console.log(`Failed to get name for UUID ${uuid}:`, error);
-    }
-    return null;
-  }, []);
-
-  // Helper functions for staff identification - FIXED
-  const isStaffMember = useCallback((playerName: string): boolean => {
-    if (!Array.isArray(staffList)) return false;
-    return staffList.some(staff => 
-      staff.name && staff.name.toLowerCase() === playerName.toLowerCase()
-    );
-  }, [staffList]);
-
-  const getPlayerRank = useCallback((playerName: string, title?: string): string => {
-    if (title) return title;
-    
-    if (!Array.isArray(staffList)) return 'Player';
-    
-    const staffMember = staffList.find(staff => 
-      staff.name && staff.name.toLowerCase() === playerName.toLowerCase()
-    );
-    
-    return staffMember ? staffMember.rank : 'Player';
-  }, [staffList]);
-
   const calculateDailyChange = useCallback((current: number, previous: number) => {
     const change = current - previous;
     return { change };
@@ -249,7 +215,102 @@ const ServerStatus = () => {
     };
   }, [historicalData, calculateDailyChange]);
 
-  // Fixed function to fetch only ONLINE players
+  const fetchTownsData = useCallback(async () => {
+    try {
+      setTownsLoadingStatus('loading');
+      console.log('Fetching towns data...');
+
+      const proxyUrl = 'https://corsproxy.io/?';
+      
+      const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
+      
+      if (townsResponse.ok) {
+        const townsData = await townsResponse.json();
+        console.log('Towns list received:', townsData);
+        
+        if (Array.isArray(townsData) && townsData.length > 0) {
+          console.log('Attempting to fetch detailed town data...');
+          const townDetailsPromises = townsData.slice(0, 20).map(async (town: any) => {
+            try {
+              const townDetailResponse = await fetch(`${proxyUrl}${encodeURIComponent(`https://api.earthmc.net/v3/aurora/towns/${town.name}`)}`);
+              if (townDetailResponse.ok) {
+                const townDetail = await townDetailResponse.json();
+                return townDetail;
+              }
+            } catch (error) {
+              console.log(`Failed to get details for town ${town.name}`);
+            }
+            return null;
+          });
+          
+          const townDetails = await Promise.all(townDetailsPromises);
+          const validTowns = townDetails.filter(town => town && town.balance && town.balance > 0);
+          
+          if (validTowns.length > 0) {
+            const sortedTowns = validTowns
+              .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
+              .slice(0, 10);
+            
+            console.log('Successfully fetched town details:', sortedTowns);
+            setTopTowns(sortedTowns);
+            setTownsLoadingStatus('success');
+            return;
+          }
+        }
+      }
+      
+      console.log('Towns API: Detailed data not available');
+      setTopTowns([]);
+      setTownsLoadingStatus('error');
+      
+    } catch (error) {
+      console.error('Error fetching towns:', error);
+      setTopTowns([]);
+      setTownsLoadingStatus('error');
+    }
+  }, []);
+
+  const loadStaffList = useCallback(async () => {
+    try {
+      setStaffLoadingStatus('loading');
+      console.log('Loading staff list...');
+      
+      const response = await fetch('https://raw.githubusercontent.com/jwkerr/staff/master/staff.json');
+      
+      if (!response.ok) {
+        console.log('Staff list not available');
+        setStaffList([]);
+        setStaffLoadingStatus('error');
+        return;
+      }
+
+      const staffData = await response.json();
+      console.log('Staff data received:', staffData);
+      
+      const staffList: StaffMember[] = [];
+      
+      Object.entries(staffData).forEach(([rank, uuids]) => {
+        if (Array.isArray(uuids)) {
+          uuids.forEach((uuid, index) => {
+            staffList.push({
+              name: `Staff Member ${index + 1}`,
+              rank: rank.charAt(0).toUpperCase() + rank.slice(1)
+            });
+          });
+        }
+      });
+      
+      console.log('Final staff list (UUID conversion unavailable):', staffList);
+      setStaffList(staffList);
+      setStaffLoadingStatus('error');
+      
+    } catch (error) {
+      console.error('Failed to load staff list:', error);
+      setStaffList([]);
+      setStaffLoadingStatus('error');
+    }
+  }, []);
+
   const fetchOnlinePlayers = useCallback(async () => {
     try {
       setPlayerLoadingStatus('loading');
@@ -257,53 +318,38 @@ const ServerStatus = () => {
 
       const proxyUrl = 'https://corsproxy.io/?';
       
-      try {
-        const response = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
+      const response = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/players')}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Players API response:', data);
         
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Players API response:', data);
+        if (Array.isArray(data) && data.length > 0) {
+          const onlinePlayersData = data.filter((player: any) => {
+            if (typeof player === 'string') return false;
+            return player && (player.isOnline === true || (player.status && player.status.isOnline === true));
+          });
           
-          if (Array.isArray(data) && data.length > 0) {
-            // Filter to only get online players
-            const onlinePlayersData = data.filter((player: any) => {
-              if (typeof player === 'string') return true; // Assume strings are online player names
-              return player && (player.isOnline === true || player.status?.isOnline === true);
-            });
-            
-            const processedPlayers = onlinePlayersData
-              .map((player: any) => {
-                const name = typeof player === 'string' ? player : (player.name || player.nickname || '');
-                if (!name) return null;
-                
-                return {
-                  name,
-                  isStaff: isStaffMember(name),
-                  rank: getPlayerRank(name),
-                  isOnline: true,
-                  town: typeof player === 'object' ? player.town : undefined,
-                  nation: typeof player === 'object' ? player.nation : undefined
-                };
-              })
-              .filter(player => player !== null)
-              .sort((a, b) => {
-                if (a.isStaff && !b.isStaff) return -1;
-                if (!a.isStaff && b.isStaff) return 1;
-                return a.name.localeCompare(b.name);
-              });
-            
-            console.log('Successfully processed online players:', processedPlayers);
-            setOnlinePlayers(processedPlayers);
-            setPlayerLoadingStatus('success');
-            return;
-          }
+          const processedPlayers = onlinePlayersData
+            .map((player: any) => ({
+              name: player.name || player.nickname || 'Unknown',
+              isStaff: false,
+              rank: 'Player',
+              isOnline: true,
+              town: player.town,
+              nation: player.nation
+            }))
+            .filter(player => player.name !== 'Unknown')
+            .sort((a, b) => a.name.localeCompare(b.name));
+          
+          console.log('Successfully processed online players:', processedPlayers);
+          setOnlinePlayers(processedPlayers);
+          setPlayerLoadingStatus('success');
+          return;
         }
-      } catch (error) {
-        console.log('Players API endpoint failed:', error);
       }
 
-      // If we get here, the API is offline
-      console.log('Player API is offline');
+      console.log('Players API: No online players found or API unavailable');
       setOnlinePlayers([]);
       setPlayerLoadingStatus('error');
     
@@ -312,9 +358,8 @@ const ServerStatus = () => {
       setOnlinePlayers([]);
       setPlayerLoadingStatus('error');
     }
-  }, [isStaffMember, getPlayerRank]);
+  }, []);
 
-  // Fixed server data fetching with better towns handling
   const fetchServerData = useCallback(async () => {
     try {
       setLoading(true);
@@ -322,43 +367,11 @@ const ServerStatus = () => {
 
       const proxyUrl = 'https://corsproxy.io/?';
 
-      // Fetch main server data
       const serverResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/')}`);
       if (!serverResponse.ok) throw new Error('Failed to fetch server data');
       const serverInfo = await serverResponse.json();
       console.log('Server info received:', serverInfo);
       setServerData(serverInfo);
-
-      // Fetch towns data for richest towns - FIXED
-      try {
-        console.log('Fetching towns data...');
-        const townsResponse = await fetch(`${proxyUrl}${encodeURIComponent('https://api.earthmc.net/v3/aurora/towns')}`);
-        
-        if (townsResponse.ok) {
-          const townsData = await townsResponse.json();
-          console.log('Towns data received:', townsData);
-          
-          if (Array.isArray(townsData) && townsData.length > 0) {
-            // Get detailed town data that includes balance
-            const richTowns = townsData
-              .filter(town => town && town.balance && town.balance > 0)
-              .sort((a: Town, b: Town) => (b.balance || 0) - (a.balance || 0))
-              .slice(0, 10);
-            
-            console.log('Top towns by balance:', richTowns);
-            setTopTowns(richTowns);
-          } else {
-            console.log('No towns data available');
-            setTopTowns([]);
-          }
-        } else {
-          console.log('Towns API returned error:', townsResponse.status);
-          setTopTowns([]);
-        }
-      } catch (townError) {
-        console.error('Error fetching towns:', townError);
-        setTopTowns([]);
-      }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -368,72 +381,17 @@ const ServerStatus = () => {
     }
   }, []);
 
-  // Fixed staff list loading function to handle UUID conversion
-  const loadStaffList = useCallback(async () => {
-    try {
-      console.log('Loading staff list...');
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(
-        'https://raw.githubusercontent.com/jwkerr/staff/master/staff.json',
-        { signal: controller.signal }
-      );
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        console.log('Staff list not available, using fallback');
-        setStaffList([]);
-        return;
-      }
-
-      const staffData = await response.json();
-      console.log('Raw staff data received:', staffData);
-      
-      // Convert UUID-based staff data to name-based format
-      const staffList: StaffMember[] = [];
-      
-      // Process each rank
-      for (const [rank, uuids] of Object.entries(staffData)) {
-        if (Array.isArray(uuids)) {
-          for (const uuid of uuids) {
-            try {
-              const name = await getNameFromUUID(uuid);
-              if (name) {
-                staffList.push({
-                  name,
-                  rank: rank.charAt(0).toUpperCase() + rank.slice(1)
-                });
-                console.log(`Mapped ${uuid} to ${name} (${rank})`);
-              }
-              // Small delay to avoid rate limiting
-              await new Promise(resolve => setTimeout(resolve, 100));
-            } catch (error) {
-              console.log(`Failed to get name for UUID ${uuid}:`, error);
-            }
-          }
-        }
-      }
-      
-      console.log('Final staff list:', staffList);
-      setStaffList(staffList);
-      
-    } catch (error) {
-      console.error('Failed to load staff list:', error);
-      setStaffList([]);
-    }
-  }, [getNameFromUUID]);
-
-  // SIMPLIFIED useEffect - only run once on mount
   useEffect(() => {
     let mounted = true;
     
     const initializeData = async () => {
       if (mounted) {
         console.log('Initializing data...');
-        await loadStaffList();
         await loadHistoricalData();
         await fetchServerData();
+        await loadStaffList();
+        await fetchTownsData();
+        await fetchOnlinePlayers();
       }
     };
 
@@ -442,31 +400,22 @@ const ServerStatus = () => {
     return () => {
       mounted = false;
     };
-  }, [loadStaffList, fetchServerData, loadHistoricalData]);
+  }, [loadHistoricalData, fetchServerData, loadStaffList, fetchTownsData, fetchOnlinePlayers]);
 
-  // Fetch online players after server data is loaded
-  useEffect(() => {
-    if (serverData && staffList.length > 0) {
-      fetchOnlinePlayers();
-    }
-  }, [serverData, staffList, fetchOnlinePlayers]);
-
-  // SIMPLIFIED interval useEffect
   useEffect(() => {
     const interval = setInterval(() => {
       console.log('Refreshing server data...');
       fetchServerData();
+      fetchOnlinePlayers();
     }, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [fetchServerData]);
+  }, [fetchServerData, fetchOnlinePlayers]);
 
-  // Save stats when server data changes
   useEffect(() => {
     saveCurrentStats();
   }, [saveCurrentStats]);
 
-  // Clock timer
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -474,12 +423,10 @@ const ServerStatus = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Memoize expensive calculations
   const staffMembers = useMemo(() => onlinePlayers.filter(p => p.isStaff), [onlinePlayers]);
   const regularPlayers = useMemo(() => onlinePlayers.filter(p => !p.isStaff), [onlinePlayers]);
   const dailyChanges = useMemo(() => getLatestData(), [getLatestData]);
 
-  // Simplify load more functions
   const loadMorePlayers = useCallback(() => {
     setPlayerLimit(prev => Math.min(prev + 20, 100));
   }, []);
@@ -657,21 +604,36 @@ const ServerStatus = () => {
           <CardHeader>
             <CardTitle className="text-red-400 flex items-center space-x-2">
               <Shield className="w-5 h-5" />
-              <span>Staff Online</span>
+              <span>Staff Status</span>
               <Badge variant="secondary" className="bg-red-600/20 text-red-300">
-                {staffMembers.length}
+                {staffLoadingStatus === 'success' ? staffMembers.length : 'Unavailable'}
               </Badge>
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Currently online staff members
+              Staff member information
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {playerLoadingStatus === 'loading' ? (
+            {staffLoadingStatus === 'loading' ? (
               <div className="space-y-3">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className="h-12 w-full" />
                 ))}
+              </div>
+            ) : staffLoadingStatus === 'error' ? (
+              <div className="text-center py-8 text-gray-400">
+                <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <div className="space-y-3">
+                  <p className="text-red-400">Staff Data Unavailable</p>
+                  <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
+                    <p className="text-red-300 text-sm mb-1">
+                      Unable to resolve staff information
+                    </p>
+                    <p className="text-gray-400 text-xs">
+                      The UUID-to-name conversion service is currently unavailable. Cannot determine which online players are staff members.
+                    </p>
+                  </div>
+                </div>
               </div>
             ) : staffMembers.length > 0 ? (
               <div className="space-y-3 max-h-64 overflow-y-auto">
@@ -705,9 +667,6 @@ const ServerStatus = () => {
               <div className="text-center py-8 text-gray-400">
                 <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No staff members online</p>
-                {playerLoadingStatus === 'error' && (
-                  <p className="text-xs text-gray-500 mt-2">Unable to fetch real-time player data</p>
-                )}
               </div>
             )}
           </CardContent>
@@ -720,14 +679,11 @@ const ServerStatus = () => {
               <Users className="w-5 h-5" />
               <span>Players Online</span>
               <Badge variant="secondary" className="bg-blue-600/20 text-blue-300">
-                {regularPlayers.length}
-                {serverData?.stats.numOnlinePlayers && regularPlayers.length < serverData.stats.numOnlinePlayers && 
-                  ` of ${serverData.stats.numOnlinePlayers}`
-                }
+                {playerLoadingStatus === 'success' ? regularPlayers.length : (serverData?.stats.numOnlinePlayers || 0)}
               </Badge>
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Currently online players {playerLoadingStatus === 'success' ? '(real-time data)' : '(limited data)'}
+              Currently online players {playerLoadingStatus === 'success' ? '(real-time data)' : '(count only)'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -737,7 +693,7 @@ const ServerStatus = () => {
                   <Skeleton key={i} className="h-12 w-full" />
                 ))}
               </div>
-            ) : regularPlayers.length > 0 ? (
+            ) : playerLoadingStatus === 'success' && regularPlayers.length > 0 ? (
               <>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {regularPlayers.slice(0, Math.min(playerLimit, 20)).map((player, index) => (
@@ -762,17 +718,14 @@ const ServerStatus = () => {
                   ))}
                 </div>
                 
-                {/* Status message */}
-                {playerLoadingStatus === 'success' && regularPlayers.length > 0 && (
-                  <div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
-                    <p className="text-green-300 text-sm">
-                      Showing {regularPlayers.length} players
-                    </p>
-                    <p className="text-gray-400 text-xs">
-                      Data from server API
-                    </p>
-                  </div>
-                )}
+                <div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
+                  <p className="text-green-300 text-sm">
+                    Showing {regularPlayers.length} online players
+                  </p>
+                  <p className="text-gray-400 text-xs">
+                    Real-time data from server API
+                  </p>
+                </div>
               </>
             ) : (
               <div className="text-center py-8 text-gray-400">
@@ -782,7 +735,7 @@ const ServerStatus = () => {
                     <p className="text-red-400">Player API Offline</p>
                     <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
                       <p className="text-red-300 text-sm mb-1">
-                        Unable to fetch player data
+                        Unable to fetch player details
                       </p>
                       <p className="text-gray-400 text-xs">
                         The player API endpoints are currently unavailable. Server reports {serverData?.stats.numOnlinePlayers || 0} players online.
@@ -891,17 +844,17 @@ const ServerStatus = () => {
             <span>Richest Towns</span>
           </CardTitle>
           <CardDescription className="text-gray-400">
-            Top 10 towns by bank balance
+            Top towns by bank balance
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {townsLoadingStatus === 'loading' ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : topTowns.length > 0 ? (
+          ) : townsLoadingStatus === 'success' && topTowns.length > 0 ? (
             <div className="space-y-3">
               {topTowns.map((town, index) => (
                 <div
@@ -942,7 +895,21 @@ const ServerStatus = () => {
           ) : (
             <div className="text-center py-8 text-gray-400">
               <Crown className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No town data available</p>
+              {townsLoadingStatus === 'error' ? (
+                <div className="space-y-3">
+                  <p className="text-red-400">Towns API Offline</p>
+                  <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
+                    <p className="text-red-300 text-sm mb-1">
+                      Unable to fetch town balance data
+                    </p>
+                    <p className="text-gray-400 text-xs">
+                      The detailed town data endpoints are currently unavailable. Basic town count: {serverData?.stats.numTowns || 0}.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p>No town data available</p>
+              )}
             </div>
           )}
         </CardContent>
