@@ -481,14 +481,11 @@ const ServerStatus = () => {
   const loadStaffList = useCallback(async () => {
     try {
       console.log('Loading staff list...');
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
+      
+      // First, try to fetch the staff.json
       const response = await fetch(
-        'https://raw.githubusercontent.com/jwkerr/staff/master/staff.json',
-        { signal: controller.signal }
+        'https://raw.githubusercontent.com/jwkerr/staff/master/staff.json'
       );
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error('Failed to fetch staff list');
@@ -499,53 +496,109 @@ const ServerStatus = () => {
       
       // staffData is an object with UUIDs as keys
       const staffUUIDs = Object.keys(staffData);
-      const staffList: StaffMember[] = [];
+      console.log('Found UUIDs:', staffUUIDs.length);
       
       if (staffUUIDs.length === 0) {
         throw new Error('No staff data found');
       }
 
-      // Convert UUIDs to player names using Mojang API
+      const staffList: StaffMember[] = [];
       const proxyUrl = 'https://corsproxy.io/?';
       
-      for (const uuid of staffUUIDs) {
-        try {
-          const cleanUUID = uuid.replace(/-/g, ''); // Remove dashes for Mojang API
-          const mojangResponse = await fetch(
-            `${proxyUrl}${encodeURIComponent(`https://sessionserver.mojang.com/session/minecraft/profile/${cleanUUID}`)}`
-          );
-          
-          if (mojangResponse.ok) {
-            const profileData = await mojangResponse.json();
-            const playerName = profileData.name;
+      // Process UUIDs in smaller batches to avoid overwhelming the API
+      const batchSize = 5;
+      for (let i = 0; i < staffUUIDs.length; i += batchSize) {
+        const batch = staffUUIDs.slice(i, i + batchSize);
+        
+        for (const uuid of batch) {
+          try {
+            console.log(`Processing UUID: ${uuid}`);
             const staffInfo = staffData[uuid];
             
-            if (playerName && staffInfo && staffInfo.rank) {
+            if (!staffInfo || !staffInfo.rank) {
+              console.log(`Skipping UUID ${uuid} - no rank info`);
+              continue;
+            }
+
+            // Clean UUID for Mojang API (remove dashes)
+            const cleanUUID = uuid.replace(/-/g, '');
+            
+            // Try multiple Mojang API endpoints
+            let playerName = null;
+            
+            // Method 1: Session server
+            try {
+              const sessionResponse = await fetch(
+                `${proxyUrl}${encodeURIComponent(`https://sessionserver.mojang.com/session/minecraft/profile/${cleanUUID}`)}`
+              );
+              
+              if (sessionResponse.ok) {
+                const sessionData = await sessionResponse.json();
+                playerName = sessionData.name;
+                console.log(`Found name via session server: ${playerName}`);
+              }
+            } catch (sessionError) {
+              console.log(`Session server failed for ${uuid}:`, sessionError);
+            }
+            
+            // Method 2: Alternative API if session server fails
+            if (!playerName) {
+              try {
+                const apiResponse = await fetch(
+                  `${proxyUrl}${encodeURIComponent(`https://api.mojang.com/user/profiles/${cleanUUID}/names`)}`
+                );
+                
+                if (apiResponse.ok) {
+                  const nameHistory = await apiResponse.json();
+                  if (Array.isArray(nameHistory) && nameHistory.length > 0) {
+                    // Get the most recent name
+                    playerName = nameHistory[nameHistory.length - 1].name;
+                    console.log(`Found name via name history: ${playerName}`);
+                  }
+                }
+              } catch (apiError) {
+                console.log(`Name history API failed for ${uuid}:`, apiError);
+              }
+            }
+            
+            if (playerName) {
               staffList.push({
                 name: playerName,
                 rank: staffInfo.rank,
                 discord: staffInfo.discord
               });
+              console.log(`Added staff member: ${playerName} (${staffInfo.rank})`);
+            } else {
+              console.log(`Could not resolve name for UUID: ${uuid}`);
             }
+            
+            // Delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+          } catch (error) {
+            console.log(`Failed to process UUID ${uuid}:`, error);
           }
-          
-          // Small delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (error) {
-          console.log(`Failed to get name for UUID ${uuid}:`, error);
+        }
+        
+        // Delay between batches
+        if (i + batchSize < staffUUIDs.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
+      
+      console.log(`Successfully processed ${staffList.length} staff members out of ${staffUUIDs.length} UUIDs`);
       
       if (staffList.length === 0) {
         throw new Error('Could not resolve any staff names');
       }
       
-      console.log('Processed staff list:', staffList);
       setStaffList(staffList);
       
     } catch (error) {
       console.error('Failed to load staff list:', error);
-      // Fallback to known staff members if API fails
+      
+      // Enhanced fallback with more known staff members
+      console.log('Using fallback staff list...');
       const fallbackStaff = [
         { name: 'FixEMC', rank: 'Owner' },
         { name: 'KarlOfDuty', rank: 'Admin' },
@@ -554,7 +607,12 @@ const ServerStatus = () => {
         { name: 'gorkymoo1119', rank: 'Developer' },
         { name: 'lucas2107', rank: 'Staff Manager' },
         { name: 'Warriorrr', rank: 'Staff Manager' },
-        { name: 'RangerMK01', rank: 'Staff Manager' }
+        { name: 'RangerMK01', rank: 'Staff Manager' },
+        { name: 'Tyce_', rank: 'Moderator' },
+        { name: 'NotFunnyDidntLaugh', rank: 'Moderator' },
+        { name: 'Pengun78', rank: 'Moderator' },
+        { name: 'ElMapacheEsMalo', rank: 'Helper' },
+        { name: 'SigmaMaleGaming', rank: 'Helper' }
       ];
       setStaffList(fallbackStaff);
     }
